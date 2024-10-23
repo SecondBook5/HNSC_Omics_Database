@@ -1,0 +1,35 @@
+name: Metadata Extraction
+
+# Triggers the workflow on push or pull request events.
+on: 
+  push:
+    branches: 
+      - main
+  pull_request:
+    branches: 
+      - main
+
+jobs:
+  metadata_extraction:
+    runs-on: ubuntu-latest
+
+    steps:
+      # Step 1: Check out the repository.
+      - name: Checkout repository
+        uses: actions/checkout@v2
+
+      # Step 2: Set up Python environment.
+      - name: Set up Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: '3.9'
+
+      # Step 3: Install the dependencies.
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+
+      # Step 4: Run metadata extraction script.
+      - name: Run Metadata Extraction Script
+        run: |
+          python scripts/metadata_extraction.py
