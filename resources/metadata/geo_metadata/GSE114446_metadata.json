@@ -1,0 +1,126 @@
+{
+    "geo_id": "GSE114446",
+    "platform": [
+        "GPL16791"
+    ],
+    "organism": "N/A",
+    "experiment_type": "N/A",
+    "samples": 33,
+    "metadata": {
+        "title": [
+            "Integrated single-cell and bulk gene expression and ATAC-seq reveals heterogeneity and early changes in pathways associated with resistance to cetuximab in HNSCC-sensitive cell lines"
+        ],
+        "geo_accession": [
+            "GSE114446"
+        ],
+        "status": [
+            "Public on May 04 2020"
+        ],
+        "submission_date": [
+            "May 14 2018"
+        ],
+        "last_update_date": [
+            "Aug 05 2020"
+        ],
+        "pubmed_id": [
+            "32362655"
+        ],
+        "summary": [
+            "Background: Identifying potential resistance mechanisms while tumour cells still respond to therapy is critical to delay acquired resistance.",
+            "",
+            "Methods: We generated the first comprehensive multi-omics, bulk and single-cell data in sensitive head and neck squamous cell carcinoma (HNSCC) cells to identify immediate responses to cetuximab. Two pathways potentially associated with resistance were focus of the study: regulation of receptor tyrosine kinases by TFAP2A transcription factor, and epithelial-to-mesenchymal transition (EMT).",
+            "",
+            "Results: Single-cell RNA-seq demonstrates heterogeneity, with cell-specific TFAP2A and VIM expression profiles in response to treatment and also with global changes to various signalling pathways. RNA-seq and ATAC-seq reveal global changes within 5 days of therapy, suggesting early onset of mechanisms of resistance; and corroborates cell line heterogeneity, with different TFAP2A targets or EMT markers affected by therapy. Lack of TFAP2A expression is associated with HNSCC decreased growth, with cetuximab and JQ1 increasing the inhibitory effect. Regarding the EMT process, short-term cetuximab therapy has the strongest effect on inhibiting migration. TFAP2A silencing does not affect cell migration, supporting an independent role for both mechanisms in resistance.",
+            "",
+            "Conclusion: Overall, we show that immediate adaptive transcriptional and epigenetic changes induced by cetuximab are heterogeneous and cell type dependent; and independent mechanisms of resistance arise while tumour cells are still sensitive to therapy."
+        ],
+        "overall_design": [
+            "Time course RNA-seq data for 3 head and neck squamous cell caricionma cell lines treated with cetuximab (100nM) and PBS controls."
+        ],
+        "type": [
+            "Expression profiling by high throughput sequencing"
+        ],
+        "contributor": [
+            "Elana,J,Fertig",
+            "Luciane,T,Kagohara"
+        ],
+        "sample_id": [
+            "GSM3141829",
+            "GSM3141830",
+            "GSM3141831",
+            "GSM3141832",
+            "GSM3141833",
+            "GSM3141834",
+            "GSM3141835",
+            "GSM3141836",
+            "GSM3141837",
+            "GSM3141838",
+            "GSM3141839",
+            "GSM3141840",
+            "GSM3141841",
+            "GSM3141842",
+            "GSM3141843",
+            "GSM3141844",
+            "GSM3141845",
+            "GSM3141846",
+            "GSM3141847",
+            "GSM3141848",
+            "GSM3141849",
+            "GSM3141850",
+            "GSM3141851",
+            "GSM3141852",
+            "GSM3141853",
+            "GSM3141854",
+            "GSM3141855",
+            "GSM3141856",
+            "GSM3141857",
+            "GSM3141858",
+            "GSM3141859",
+            "GSM3141860",
+            "GSM3141861"
+        ],
+        "contact_name": [
+            "Elana,Judith,Fertig"
+        ],
+        "contact_email": [
+            "ejfertig@jhmi.edu"
+        ],
+        "contact_department": [
+            "Oncology Quantitative Sciences"
+        ],
+        "contact_institute": [
+            "Johns Hopkins University"
+        ],
+        "contact_address": [
+            "550 N Broadway, Suite 1101E"
+        ],
+        "contact_city": [
+            "Baltimore"
+        ],
+        "contact_state": [
+            "MD"
+        ],
+        "contact_zip/postal_code": [
+            "21209"
+        ],
+        "contact_country": [
+            "USA"
+        ],
+        "supplementary_file": [
+            "ftp://ftp.ncbi.nlm.nih.gov/geo/series/GSE114nnn/GSE114446/suppl/GSE114446_STCCountsCG.txt.gz"
+        ],
+        "platform_id": [
+            "GPL16791"
+        ],
+        "platform_taxid": [
+            "9606"
+        ],
+        "sample_taxid": [
+            "9606"
+        ],
+        "relation": [
+            "BioProject: https://www.ncbi.nlm.nih.gov/bioproject/PRJNA471358",
+            "SRA: https://www.ncbi.nlm.nih.gov/sra?term=SRP145751"
+        ]
+    }
+}
