@@ -1,0 +1,15 @@
+GSE Number	Data Type	Link
+GSE114375	Microarray, Time course	https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE114375
+GSE114446	RNA-Seq, ATAC-Seq	https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE114446
+GSE137524	RNA-Seq, ATAC-Seq, Single-cell	https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE137524
+GSE135604	ATAC-Seq, RNA-Seq	https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE135604
+GSE103322	Single-cell RNA-Seq	https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE103322
+GSE139324	Single-cell RNA-Seq	https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE139324
+GSE164690	Single-cell RNA-Seq, Immune cells	https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE164690
+GSE234933	Single-cell RNA-Seq, Fibroblasts	https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE234933
+GSE182227	Single-cell RNA-Seq, HPV-related	https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE182227
+GSE195832	Single-cell RNA-Seq, CAFs	https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE195832
+GSE112021	ChIP-Seq, RNA-Seq	https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE112021
+GSE242276	m6A-seq, RNA-binding proteins	https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE242276
+GSE242281	RIP-Seq, RNA-binding proteins	https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE242281
+GSE208253	Spatial transcriptomics	https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE208253
