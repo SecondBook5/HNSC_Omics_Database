@@ -13,3 +13,82 @@ GSE112021	ChIP-Seq, RNA-Seq	https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=G
 GSE242276	m6A-seq, RNA-binding proteins	https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE242276
 GSE242281	RIP-Seq, RNA-binding proteins	https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE242281
 GSE208253	Spatial transcriptomics	https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE208253
+
+
+
+
+project_root/
+│
+├── resources/  # Input files and raw data needed for the project
+│   ├── geo_ids.txt  # List of GEO IDs
+│   ├── tcga_manifest.txt  # List of TCGA datasets or metadata
+│   ├── cptac_metadata.txt  # CPTAC metadata file
+│   ├── config.yaml  # Configuration for paths, settings, environment
+│   └── reference_data/  # Reference files such as genome annotations
+│       ├── hg19.fa  # Human genome reference for alignment
+│       └── gene_annotation.gtf  # Gene annotation files
+│
+├── metadata_extraction/  # Modular OOP-based scripts for extracting metadata from various sources
+│   ├── __init__.py  # Package initializer
+│   ├── geo_metadata_extractor.py  # Object-oriented GEO metadata extraction
+│   ├── tcga_metadata_extractor.py  # TCGA metadata extraction
+│   ├── cptac_metadata_extractor.py  # CPTAC metadata extraction
+│   └── helpers.py  # Shared utility functions for extraction tasks
+│
+├── data_processing/  # Scripts to process raw data and prepare for analysis
+│   ├── __init__.py  # Package initializer
+│   ├── chipseq_processor.py  # ChIP-seq data processing
+│   ├── rna_seq_processor.py  # RNA-seq data processing
+│   ├── proteomics_processor.py  # CPTAC proteomics data processing
+│   └── normalization.py  # Data normalization and pre-processing
+│
+├── schemas/  # Database schema and documentation related to the database
+│   ├── er_diagrams/  # ER diagrams for database schema visualization
+│   ├── omics_schema.sql  # SQL schema for relational database (PostgreSQL)
+│   ├── nosql_schema.json  # Schema for MongoDB (single-cell data, flexible structure)
+│   ├── data_dictionary/  # Documentation for the fields, tables, and metadata
+│   └── schema_validation/  # Scripts or tools to validate data against the schema
+│
+├── database_setup/  # Scripts to initialize, populate, and maintain the database
+│   ├── postgres_setup.py  # Relational database setup for structured data (PostgreSQL)
+│   ├── mongodb_setup.py  # Setup for semi-structured data (MongoDB)
+│   ├── database_population.py  # Code for populating the database with omics data
+│   └── backups/  # Backup scripts or folder for database snapshots
+│
+├── analysis_pipelines/  # Analysis pipelines for different omics layers and integrative analysis
+│   ├── __init__.py  # Package initializer
+│   ├── geo_pipeline.py  # GEO dataset analysis pipeline (ChIP-seq, RNA-seq)
+│   ├── tcga_pipeline.py  # TCGA dataset pipeline
+│   ├── cptac_pipeline.py  # CPTAC proteomics pipeline
+│   ├── multi_omics_integration.py  # Integrating data across multiple omics layers
+│   ├── ml_pipelines/  # Machine learning models for classification, clustering, survival prediction
+│       ├── patient_outcome_prediction.py  # Predict patient outcomes using omics data
+│       └── clustering_analysis.py  # Identify clusters within tumor microenvironment
+│   └── visualization/  # Visualization tools for the data
+│       ├── pca_plot.py  # PCA visualization
+│       └── tSNE_umap_plot.py  # t-SNE and UMAP for tumor heterogeneity
+│
+├── ui/  # User interface for querying the database and viewing results
+│   ├── __init__.py  # Package initializer
+│   ├── flask_app.py  # Flask web app for the database interface
+│   ├── templates/  # HTML templates for the web interface
+│   ├── static/  # Static files like CSS and JavaScript
+│   └── routes.py  # API endpoints for interacting with the data
+│
+├── tests/  # Unit and integration tests for each component of the system
+│   ├── test_metadata_extraction.py  # Tests for metadata extraction
+│   ├── test_data_processing.py  # Tests for data processing scripts
+│   ├── test_database_setup.py  # Database setup tests
+│   └── test_analysis_pipelines.py  # Tests for analysis and ML pipelines
+│
+├── notebooks/  # Jupyter notebooks for exploratory analysis and prototyping
+│   ├── exploratory_analysis.ipynb  # Notebook for initial data exploration
+│   ├── prototype_ml_model.ipynb  # Machine learning model prototype
+│   └── database_queries.ipynb  # Running complex queries against the database
+│
+└── docs/  # Documentation for the project
+    ├── README.md  # Overview of the project
+    ├── CONTRIBUTING.md  # Guidelines for contributing to the project
+    ├── INSTALL.md  # Instructions for setting up the environment
+    ├── API_DOCUMENTATION.md  # API documentation for interacting with the database
+    └── CHANGELOG.md  # Track changes and versions of the project
