@@ -3,4 +3,7 @@
 .RData
 .Ruserdata
 .venv
-
+.env
+logs/
+node_modules/
+config/

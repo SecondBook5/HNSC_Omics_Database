@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# setup_mongodb.sh - Script to set up MongoDB database and user with robust error handling, logging, and environment variable loading.
-# This script configures MongoDB for the HNSC Omics project, creating a database and user as defined in the .env file.
+# setup_mongodb.sh - Script to set up MongoDB db and user with robust error handling, logging, and environment variable loading.
+# This script configures MongoDB for the HNSC Omics project, creating a db and user as defined in the .env file.
 
 # Define the logs directory and log file path
 LOGDIR="logs"
@@ -53,8 +53,8 @@ fi
   fi
 
   # Step 4: Execute MongoDB setup commands using --eval for non-interactive mode
-  # - Connects to MongoDB and creates the database and user if they do not exist
-  # - Provides feedback if database/user already exists
+  # - Connects to MongoDB and creates the db and user if they do not exist
+  # - Provides feedback if db/user already exists
   echo "$(date): Setting up MongoDB database and user..."
 
   mongosh --host "$MONGO_HOST" --port "$MONGO_PORT" --eval "
@@ -74,8 +74,8 @@ fi
     exit 1
   }
 
-  # Step 5: Validate MongoDB database and user creation
-  # - Confirms the database and user were created successfully by querying MongoDB
+  # Step 5: Validate MongoDB db and user creation
+  # - Confirms the db and user were created successfully by querying MongoDB
   # - If validation fails, exits with an error message to indicate incomplete setup
   echo "$(date): Validating MongoDB database and user creation..."
 

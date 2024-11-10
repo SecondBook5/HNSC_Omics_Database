@@ -1,6 +1,6 @@
 import pytest
 import json
-from data_structures.graph import Graph, GraphVertexError, GraphEdgeError
+from utils.data_structures.graph import Graph, GraphVertexError, GraphEdgeError
 
 def test_add_vertex() -> None:
     """

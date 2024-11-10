@@ -121,7 +121,7 @@ class GEOMetadataExtractor:
 
 
 # Usage example (assuming the geo_ids.txt is in the correct location):
-geo_extractor = GEOMetadataExtractor(geo_id_file="../resources/geo_ids.txt", output_dir="../resources/metadata/geo_metadata")
+geo_extractor = GEOMetadataExtractor(geo_id_file="../../resources/geo_ids.txt", output_dir="../../data/metadata/geo_metadata")
 
 # Call the method to extract metadata for all GEO IDs
 try:

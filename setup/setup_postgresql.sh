@@ -1,8 +1,8 @@
 #!/bin/bash
 
 # setup_postgresql.sh
-# This script automates the setup process for the PostgreSQL database needed in the HNSC Multi-Omics Database Project.
-# It creates a PostgreSQL database, a user with specific privileges, and applies necessary configurations.
+# This script automates the setup process for the PostgreSQL db needed in the HNSC Multi-Omics Database Project.
+# It creates a PostgreSQL db, a user with specific privileges, and applies necessary configurations.
 # It also logs each step of the setup process, handling environment variables securely, and rotates logs if needed.
 
 # Define the logs directory and log file path
@@ -63,18 +63,18 @@ fi
     exit 1
   fi
 
-  # Step 5: Enable dblink extension (required for database creation within PL/pgSQL)
-  # - The dblink extension allows cross-database communication, useful for conditional database creation
+  # Step 5: Enable dblink extension (required for db creation within PL/pgSQL)
+  # - The dblink extension allows cross-db communication, useful for conditional db creation
   echo "$(date): Enabling dblink extension..."
   sudo -u postgres psql -c "CREATE EXTENSION IF NOT EXISTS dblink;" || {
     echo "Error: Failed to create dblink extension. Check PostgreSQL permissions or configuration."
     exit 1
   }
 
-  # Step 6: Execute database and user setup commands in PostgreSQL
-  # - Connects as superuser 'postgres' to create the database and user if they do not exist
-  # - Uses DO $$ blocks to conditionally check for database and user existence, preventing duplication
-  # - Provides NOTICE statements if database/user already exists, informing the user of each step
+  # Step 6: Execute db and user setup commands in PostgreSQL
+  # - Connects as superuser 'postgres' to create the db and user if they do not exist
+  # - Uses DO $$ blocks to conditionally check for db and user existence, preventing duplication
+  # - Provides NOTICE statements if db/user already exists, informing the user of each step
   echo "$(date): Setting up PostgreSQL database and user..."
   sudo -u postgres psql <<EOF
 
@@ -110,12 +110,12 @@ fi
   GRANT ALL PRIVILEGES ON DATABASE $PG_DB_NAME TO $DB_USER;
 EOF
 
-  # Step 7: Validate the creation of the database and user
-  # - Confirms that the database and user were created successfully
+  # Step 7: Validate the creation of the db and user
+  # - Confirms that the db and user were created successfully
   # - If validation fails, exits with an error message to indicate setup was incomplete
   echo "$(date): Validating database and user creation..."
 
-  # Check for the database by listing all databases and searching for PG_DB_NAME
+  # Check for the db by listing all databases and searching for PG_DB_NAME
   if sudo -u postgres psql -c "\l" | grep -q "$PG_DB_NAME"; then
     echo "Database '$PG_DB_NAME' exists."
   else
