@@ -1,1 +1,15 @@
 GEOparse
+cptac
+biopython
+scikit-learn
+scipy
+numpy
+pandas
+sqlalchemy
+pymongo
+rpy2
+psycopg2
+typing
+pytest
+tqdm
+python-dotenv
