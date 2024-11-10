@@ -1,0 +1,164 @@
+erDiagram
+    %% --- PostgreSQL Relational Tables for Structured Data ---
+    %% GENE TABLE: Stores unique gene information for each gene. Relates to other tables by GeneID.
+    GENE {
+        STRING GeneID PK "Primary Key for genes (e.g., TP53)"
+        STRING GeneSymbol "Official gene symbol (e.g., TP53)"
+        STRING GeneName "Full name of the gene"
+        STRING Chromosome "Chromosome number"
+        INT StartPosition "Genomic start position"
+        INT EndPosition "Genomic end position"
+    }
+    
+    %% CLINICAL_METADATA TABLE: Contains patient-related data. Each patient has a unique ClinicalID.
+    CLINICAL_METADATA {
+        STRING ClinicalID PK "Primary Key for clinical metadata"
+        STRING PatientID "Identifier for each patient"
+        INT Age "Patient age"
+        STRING Gender "Gender"
+        INT SurvivalTime "Survival time in months"
+        BOOLEAN EventObserved "Binary event occurrence (e.g., death)"
+        STRING TumorStage "Tumor stage"
+        STRING Treatment "Details of the treatment received"
+    }
+    
+    %% SAMPLE TABLE: Contains sample-specific data and links to Clinical Metadata through ClinicalID.
+    SAMPLE {
+        STRING SampleID PK "Primary Key for each sample"
+        STRING ClinicalID FK "Foreign Key linking to Clinical_Metadata"
+        STRING TissueType "Sampled tissue type (e.g., tumor, normal)"
+        STRING Platform "Platform used (RNA-Seq, ATAC-Seq)"
+    }
+    
+    %% RNA_SEQ TABLE: Contains RNA expression data, linked to Gene and Sample tables.
+    RNA_SEQ {
+        STRING ExpressionID PK "Primary Key for RNA expression data"
+        STRING SampleID FK "Foreign Key linking to Sample"
+        STRING GeneID FK "Foreign Key linking to Gene"
+        FLOAT TPM "Transcripts Per Million for expression level"
+        FLOAT FPKM "Fragments Per Kilobase per Million"
+    }
+    
+    %% METHYLATION TABLE: Stores DNA methylation data linked to specific CpG positions on genes.
+    METHYLATION {
+        STRING MethylationID PK "Primary Key for methylation data"
+        STRING SampleID FK "Foreign Key linking to Sample"
+        STRING GeneID FK "Foreign Key linking to Gene"
+        INT CpGPosition "Position of CpG site"
+        FLOAT MethylationLevel "Beta value for methylation level"
+    }
+    
+    %% miRNA TABLE: Contains microRNA data, linking each record to a Gene and Sample.
+    MIRNA_SEQ {
+        STRING miRNAID PK "Primary Key for miRNA data"
+        STRING SampleID FK "Foreign Key linking to Sample"
+        STRING GeneID FK "Foreign Key linking to Gene"
+        FLOAT ExpressionLevel "Expression level for miRNA"
+    }
+    
+    %% ATAC_SEQ TABLE: Stores chromatin accessibility data, linked to samples.
+    ATAC_SEQ {
+        STRING ATACID PK "Primary Key for ATAC-Seq data"
+        STRING SampleID FK "Foreign Key linking to Sample"
+        INT RegionStart "Start of accessible chromatin region"
+        INT RegionEnd "End of accessible chromatin region"
+        FLOAT SignalStrength "Signal strength of ATAC-Seq data"
+    }
+
+    %% ChIP_SEQ TABLE: Holds chromatin immunoprecipitation data (histone modifications, TFs).
+    CHIP_SEQ {
+        STRING ChIPID PK "Primary Key for ChIP-Seq data"
+        STRING SampleID FK "Foreign Key linking to Sample"
+        STRING GeneID FK "Foreign Key linking to Gene"
+        STRING Factor "Transcription factor or histone modification target"
+        INT BindingSiteStart "Start position of binding site"
+        INT BindingSiteEnd "End position of binding site"
+        FLOAT SignalStrength "ChIP-Seq signal strength for binding affinity"
+    }
+
+    %% --- MongoDB Collections for Unstructured / Hierarchical Data ---
+    %% SINGLE_CELL_DATA: Represents single-cell RNA data.
+    SINGLE_CELL_DATA {
+        STRING CellID PK "Unique identifier for each cell"
+        STRING SampleID FK "Link to Sample in PostgreSQL"
+        STRING CellType "Type of cell (e.g., immune cell)"
+        OBJECT GeneExpression "Gene expression data in JSON"
+        OBJECT Clustering "Clustering data (e.g., PCA, t-SNE) for cell"
+    }
+    
+    %% SPATIAL_TRANSCRIPTOMICS: Stores spatial RNA data.
+    SPATIAL_TRANSCRIPTOMICS {
+        STRING SpotID PK "Unique identifier for spatial spot"
+        STRING SampleID FK "Link to Sample in PostgreSQL"
+        STRING CellType "Cell type in each spatial spot"
+        OBJECT GeneExpression "Gene expression levels in JSON format"
+        OBJECT SpatialCoordinates "Spatial coordinates in tissue"
+    }
+
+    %% --- Data Mapping Table for Cross-Database Integration ---
+    %% DATA_MAPPING: Catalogs datasets across PostgreSQL and MongoDB for integration purposes.
+    DATA_MAPPING {
+        STRING MappingID PK "Unique ID for each data relationship"
+        STRING DataType "e.g., RNA-Seq, Single-cell RNA-Seq"
+        STRING PostgresTable "Table name in PostgreSQL (if any)"
+        STRING MongoDBCollection "Collection name in MongoDB (if any)"
+        STRING IntegrationDetails "Description of data linking process"
+        OBJECT AdditionalMetadata "Optional metadata (e.g., study details)"
+    }
+
+    %% --- Entity Mapping and Integration Layer ---
+    %% ENTITY_MAPPING: Link for specific relationships, using shared or derived identifiers.
+    ENTITY_MAPPING {
+        STRING MappingID PK "Primary Key for entity mapping"
+        STRING SourceTable "Source table/collection in PostgreSQL or MongoDB"
+        STRING TargetTable "Target table/collection in PostgreSQL or MongoDB"
+        STRING ForeignKey "Foreign key in relational table"
+        STRING MongoField "Field in MongoDB document structure"
+        STRING IntegrationType "Type of integration (Direct, Derived, Aggregated)"
+    }
+
+    %% --- ETL Pipeline for Data Flow Management ---
+    %% PIPELINE: Describes data transformations applied during ETL to move and normalize data across databases.
+    PIPELINE {
+        STRING PipelineID PK "Unique identifier for ETL process"
+        STRING Source "Source of data (e.g., GEO, TCGA, CPTAC)"
+        STRING TargetDatabase "Target database (PostgreSQL or MongoDB)"
+        STRING Transformation "Transformation rules applied"
+        STRING DataMappingID FK "References DATA_MAPPING for integration guidance"
+        STRING Status "Status of ETL process (e.g., Completed)"
+    }
+
+    %% --- Relationships and Mapping Between Tables and Collections ---
+    %% Gene relationships to RNA, Methylation, and ChIP data via GeneID
+    GENE ||--o{ RNA_SEQ : "1-to-many, via GeneID"
+    GENE ||--o{ METHYLATION : "1-to-many, via GeneID"
+    GENE ||--o{ CHIP_SEQ : "1-to-many, via GeneID"
+
+    %% Sample linked to RNA, Methylation, miRNA, ATAC, and ChIP tables through SampleID
+    SAMPLE ||--o{ RNA_SEQ : "1-to-many, via SampleID"
+    SAMPLE ||--o{ METHYLATION : "1-to-many, via SampleID"
+    SAMPLE ||--o{ MIRNA_SEQ : "1-to-many, via SampleID"
+    SAMPLE ||--o{ ATAC_SEQ : "1-to-many, via SampleID"
+    SAMPLE ||--o{ CHIP_SEQ : "1-to-many, via SampleID"
+
+    %% Cross-database links: Sample to single-cell and spatial data in MongoDB
+    SAMPLE ||--o{ SINGLE_CELL_DATA : "1-to-many (Cross-database), via SampleID"
+    SAMPLE ||--o{ SPATIAL_TRANSCRIPTOMICS : "1-to-many (Cross-database), via SampleID"
+    CLINICAL_METADATA ||--|| SAMPLE : "1-to-1, maps patient to sample"
+
+    %% Entity mapping to connect PostgreSQL relational tables with MongoDB collections
+    ENTITY_MAPPING ||--o{ RNA_SEQ : "Cross-database mapping, via SampleID"
+    ENTITY_MAPPING ||--o{ SINGLE_CELL_DATA : "Cross-database mapping, via SampleID"
+    ENTITY_MAPPING ||--o{ SPATIAL_TRANSCRIPTOMICS : "Cross-database mapping, via SampleID"
+    ENTITY_MAPPING ||--o{ CLINICAL_METADATA : "Cross-database patient mapping"
+    CLINICAL_METADATA ||--o{ SINGLE_CELL_DATA : "Cross-database integration, via SampleID"
+    CLINICAL_METADATA ||--o{ SPATIAL_TRANSCRIPTOMICS : "Cross-database integration, via SampleID"
+
+    %% ETL processes defining transformations applied to import data into relational or hierarchical models.
+    PIPELINE ||--o{ RNA_SEQ : "ETL transformation"
+    PIPELINE ||--o{ METHYLATION : "ETL transformation"
+    PIPELINE ||--o{ CHIP_SEQ : "ETL transformation"
+    PIPELINE ||--o{ SINGLE_CELL_DATA : "ETL transformation"
+    PIPELINE ||--o{ SPATIAL_TRANSCRIPTOMICS : "ETL transformation"
+    PIPELINE ||--o{ ENTITY_MAPPING : "Defines cross-database indexes"
+    PIPELINE ||--o{ DATA_MAPPING : "Guides data integration across databases"
