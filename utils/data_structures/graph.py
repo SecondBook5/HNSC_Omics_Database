@@ -23,7 +23,7 @@ Key Classes and Functionality:
      traversal.
 
 4. Graph Class:
-   - Core class that models the graph, supporting both directed and undirected graphs.
+   - Core class that orm_models the graph, supporting both directed and undirected graphs.
    - It stores vertices in an adjacency list format, where each vertex ID points to
      its associated Vertex object.
    - Graph creation is flexible, allowing options to enable/disable self-loops,
