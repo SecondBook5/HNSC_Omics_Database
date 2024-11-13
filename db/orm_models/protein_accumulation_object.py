@@ -15,7 +15,7 @@ Advanced Database Concepts:
 
 from sqlalchemy import Column, String, ForeignKey, Float, DateTime, Boolean, Integer, func, Index
 from sqlalchemy.orm import relationship
-from db.db_config import Base
+from config.db_config import Base
 
 
 class ProteinAbundance(Base):

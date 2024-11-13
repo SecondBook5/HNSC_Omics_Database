@@ -7,12 +7,14 @@ import time  # Import time module to enable delays between retry attempts
 import logging  # Import logging module for structured logging of connection status
 from sqlalchemy.exc import OperationalError  # Import OperationalError to catch PostgreSQL connection errors
 from pymongo.errors import ConnectionFailure  # Import ConnectionFailure to catch MongoDB connection errors
-from db.db_config import get_postgres_engine, get_mongo_client  # Import connection functions from db_config
+from config.db_config import get_postgres_engine, get_mongo_client  # Import connection functions from db_config
 from sqlalchemy import text
+import os  # Import os to access environment variables
 
-# Configure the logging settings
-# Set the logging level to INFO to show general info and warning/error messages in a consistent format
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+# Configure logging settings
+# Set the logging level and output location based on an environment variable
+log_level = logging.DEBUG if os.getenv("DEBUG", "False").lower() == "true" else logging.INFO
+logging.basicConfig(level=log_level, format='%(asctime)s - %(levelname)s - %(message)s')
 
 
 class DatabaseConnectionChecker:
@@ -45,7 +47,7 @@ class DatabaseConnectionChecker:
         # Loop over the range of retries, starting from 1 up to the specified number of attempts
         for attempt in range(1, self.retries + 1):
             try:
-                # Get the PostgreSQL engine from db_config, which uses environment variables
+                # Get the PostgreSQL engine from db_config
                 engine = get_postgres_engine()
 
                 # Check if get_postgres_engine returned None, which indicates a setup issue
@@ -54,7 +56,7 @@ class DatabaseConnectionChecker:
                     logging.error("PostgreSQL engine could not be created. Check environment variables.")
                     return False
 
-                # Connect to PostgreSQL and execute a simple test query to confirm connectivity
+                # Run a simple SQL command to validate the connection
                 with engine.connect() as conn:
                     # Run a basic SQL command "SELECT 1" to validate the connection
                     conn.execute(text("SELECT 1"))
@@ -67,7 +69,8 @@ class DatabaseConnectionChecker:
             except OperationalError as e:
                 # Log a warning with the error message and attempt number, then delay for retry
                 logging.warning(
-                    f"Attempt {attempt}: PostgreSQL connection failed. Error: {e}. Retrying in {self.delay} seconds...")
+                    f"Attempt {attempt}: PostgreSQL connection failed. Error: {e}. Retrying in {self.delay} seconds..."
+                )
                 time.sleep(self.delay)  # Wait before retrying
 
         # Log an error if all attempts fail and return False to indicate connection failure
@@ -84,7 +87,7 @@ class DatabaseConnectionChecker:
         # Loop over the range of retries, starting from 1 up to the specified number of attempts
         for attempt in range(1, self.retries + 1):
             try:
-                # Get the MongoDB client from db_config, which uses environment variables
+                # Get the MongoDB client from db_config
                 client = get_mongo_client()
 
                 # Check if get_mongo_client returned None, which indicates a setup issue
@@ -104,7 +107,8 @@ class DatabaseConnectionChecker:
             except ConnectionFailure as e:
                 # Log a warning with the error message and attempt number, then delay for retry
                 logging.warning(
-                    f"Attempt {attempt}: MongoDB connection failed. Error: {e}. Retrying in {self.delay} seconds...")
+                    f"Attempt {attempt}: MongoDB connection failed. Error: {e}. Retrying in {self.delay} seconds..."
+                )
                 time.sleep(self.delay)  # Wait before retrying
 
         # Log an error if all attempts fail and return False to indicate connection failure
@@ -112,13 +116,22 @@ class DatabaseConnectionChecker:
         return False
 
 
-# Only run the following code if this script is executed directly
 if __name__ == "__main__":
-    # Initialize the DatabaseConnectionChecker with default retry parameters (3 retries, 2-second delay)
-    checker = DatabaseConnectionChecker()
+    # Initialize the DatabaseConnectionChecker with default retry parameters
+    checker = DatabaseConnectionChecker(
+        retries=int(os.getenv("DB_RETRIES", 3)),  # Retrieve retries from environment variables or use default
+        delay=int(os.getenv("DB_DELAY", 2))  # Retrieve delay from environment variables or use default
+    )
 
-    # Attempt to check PostgreSQL connection and log the result
-    checker.check_postgresql_connection()
+    # Check connections
+    postgres_connected = checker.check_postgresql_connection()
+    mongodb_connected = checker.check_mongodb_connection()
 
-    # Attempt to check MongoDB connection and log the result
-    checker.check_mongodb_connection()
+    # Summary Report
+    if postgres_connected and mongodb_connected:
+        logging.info("All database connections are successful.")
+    else:
+        if not postgres_connected:
+            logging.error("PostgreSQL connection failed after retries.")
+        if not mongodb_connected:
+            logging.error("MongoDB connection failed after retries.")

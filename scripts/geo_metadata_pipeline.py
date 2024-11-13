@@ -20,7 +20,7 @@ import requests
 import tarfile
 import xml.etree.ElementTree as ET
 from sqlalchemy.orm import Session
-from db.db_config import engine  # Adjust this import path as needed
+from config.db_config import engine  # Adjust this import path as needed
 from db.schema.metadata_schema import DatasetSeriesMetadata, DatasetSampleMetadata  # ORM models for database schema
 
 # Directory to save downloaded MINiML metadata files

@@ -6,6 +6,5 @@
 .env
 logs/
 node_modules/
-config/
 .ipynb_checkpoints
 .Rprofile

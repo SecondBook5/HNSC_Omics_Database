@@ -1,7 +1,7 @@
 # db/postgresql_schema.py
-from sqlalchemy import create_engine, Column, String, Integer, Text, JSON
+from sqlalchemy import Column, String, Integer, Text, JSON
 from sqlalchemy.ext.declarative import declarative_base
-from db.db_config import get_postgres_engine
+from config.db_config import get_postgres_engine
 
 # Define the SQLAlchemy base class for ORM models
 Base = declarative_base()

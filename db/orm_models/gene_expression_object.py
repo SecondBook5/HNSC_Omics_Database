@@ -14,7 +14,7 @@ Advanced Database Concepts:
 """
 
 from sqlalchemy import Column, String, Integer, Float, DateTime, Index, CheckConstraint, UniqueConstraint, func
-from db.db_config import Base  # Importing the Base class for SQLAlchemy ORM from the configuration
+from config.db_config import Base  # Importing the Base class for SQLAlchemy ORM from the configuration
 
 
 class GeneExpression(Base):

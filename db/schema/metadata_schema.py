@@ -27,7 +27,7 @@ Configuration:
 
 from sqlalchemy import Column, String, Integer, Date, Text, ForeignKey, Index, UniqueConstraint
 from sqlalchemy.orm import relationship
-from db.db_config import Base
+from config.db_config import Base
 
 
 class DatasetSeriesMetadata(Base):

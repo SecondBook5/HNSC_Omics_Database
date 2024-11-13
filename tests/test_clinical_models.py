@@ -12,7 +12,7 @@ import pytest
 # Import Session for managing database transactions within tests
 from sqlalchemy.orm import Session
 # Import base configuration for tables and session management from db_config
-from db.db_config import Base, engine, SessionLocal
+from config.db_config import Base, engine, SessionLocal
 # Import the ORM classes for ClinicalSample and ClinicalMetadata models
 from db.orm_models.clinical_sample_object import ClinicalSample
 from db.orm_models.clinical_metadata_object import ClinicalMetadata
