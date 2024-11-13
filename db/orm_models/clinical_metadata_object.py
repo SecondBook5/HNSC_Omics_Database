@@ -10,16 +10,16 @@ Advanced Database Concepts:
 - Foreign Key Constraints: Links ClinicalID in ClinicalSample to ClinicalMetadata for data integrity.
 - Indexing: Index on frequently queried fields like PatientID and TumorStage.
 - Data Constraints: Ensures consistency with checks on fields like Gender and EventObserved.
+- Data Source Tracking: Fields added to specify the original data source and dataset for each record.
 """
 
 from sqlalchemy import Column, String, Integer, Boolean, CheckConstraint
 from sqlalchemy.orm import relationship
 from db.db_config import Base
 
-
 class ClinicalMetadata(Base):
     """
-    The ClinicalMetadata class defines the schema for storing patient-related information,
+    The ClinicalMetadata class defines the diagrams for storing patient-related information,
     with constraints to maintain data integrity and a relationship to ClinicalSample.
 
     Attributes:
@@ -31,37 +31,52 @@ class ClinicalMetadata(Base):
         EventObserved (bool): True if an event (e.g., death) was observed, False otherwise.
         TumorStage (str): Clinical stage of the tumor.
         Treatment (str): Description of the treatment received.
+        DataSource (str): Name or source of the dataset (e.g., GEO, CPTAC).
+        Dataset (str): Specific dataset identifier (e.g., GSE114446, PDC000221).
         samples (list): Relationship to ClinicalSample, linking samples to clinical data.
     """
 
+    # Specifies the table name for this ORM class in the database
     __tablename__ = 'clinical_metadata'
 
-    # Primary Key for each clinical metadata record
+    # Defines the primary key for each clinical metadata record
     ClinicalID: str = Column(String, primary_key=True)
 
-    # Patient-specific information
-    PatientID: str = Column(String, nullable=False, index=True)  # Unique identifier per patient
-    Age: int = Column(Integer, nullable=False)  # Age of the patient
+    # Defines a unique identifier for each patient and creates an index for optimized queries
+    PatientID: str = Column(String, nullable=False, index=True)
 
-    # Gender field constrained to 'M' or 'F' for data integrity
+    # Defines the age of the patient; ensures a non-negative integer for logical validity
+    Age: int = Column(Integer, nullable=False)
+
+    # Gender of the patient, constrained to specific values ('M' or 'F') for data consistency
     Gender: str = Column(String, nullable=False)
 
-    # Survival time (in months) and event observed (True if event such as death occurred)
+    # Survival time in months; can be null for cases without this information
     SurvivalTime: int = Column(Integer, nullable=True)
+
+    # Boolean flag to indicate if an event, such as death, was observed
     EventObserved: bool = Column(Boolean, nullable=False)
 
-    # Tumor stage and treatment details
+    # Clinical stage of the tumor; nullable, as it may not apply to all patients
     TumorStage: str = Column(String, nullable=True)
+
+    # Treatment description providing context on the treatment received
     Treatment: str = Column(String, nullable=True)
 
-    # Establishes a one-to-many relationship to ClinicalSample
+    # Specifies the original data source (e.g., GEO, CPTAC) for tracking data provenance
+    DataSource: str = Column(String, nullable=False)
+
+    # Indicates the specific dataset within the source (e.g., GSE114446, PDC000221)
+    Dataset: str = Column(String, nullable=False)
+
+    # Establishes a one-to-many relationship with ClinicalSample, linking clinical metadata to multiple samples
     samples = relationship("ClinicalSample", backref="clinical_metadata", cascade="all, delete-orphan")
 
-    # Table constraints
+    # Table constraints ensure data integrity with checks on fields like Gender and EventObserved
     __table_args__ = (
-        # Check constraint for Gender, enforcing 'M' or 'F' values only
+        # Check constraint to limit Gender values to 'M' or 'F' for data consistency
         CheckConstraint("Gender IN ('M', 'F')", name="check_gender"),
 
-        # Ensure EventObserved is a boolean (not strictly necessary in SQLAlchemy, but useful for clarity)
+        # Check constraint to enforce that EventObserved is a boolean value
         CheckConstraint("EventObserved IN (0, 1)", name="check_event_observed"),
     )

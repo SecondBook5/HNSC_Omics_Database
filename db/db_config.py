@@ -15,29 +15,19 @@ from sqlalchemy.engine import Engine
 from pymongo import MongoClient
 
 # Load environment variables from the .env file located in the config directory
-# This approach keeps sensitive information out of the codebase itself
 env_path = Path(__file__).resolve().parent.parent / 'config' / '.env'
 load_dotenv(dotenv_path=env_path)
 
-# Debugging print statements to verify each environment variable
-print("DB_USER:", os.getenv("DB_USER"))
-print("DB_PASSWORD:", os.getenv("DB_PASSWORD"))
-print("PG_HOST:", os.getenv("PG_HOST"))
-print("PG_PORT:", os.getenv("PG_PORT"))
-print("PG_DB_NAME:", os.getenv("PG_DB_NAME"))
-print("MONGO_HOST:", os.getenv("MONGO_HOST"))
-print("MONGO_PORT:", os.getenv("MONGO_PORT"))
-print("MONGO_DB_NAME:", os.getenv("MONGO_DB_NAME"))
+# Set debug mode from environment variable
+DEBUG = os.getenv("DEBUG", "False").lower() == "true"
 
 # Define the SQLAlchemy Base for ORM models
 Base = declarative_base()
 
 # PostgreSQL connection URL constructed from environment variables
 postgres_url = f"postgresql://{os.getenv('DB_USER')}:{os.getenv('DB_PASSWORD')}@{os.getenv('PG_HOST')}:{os.getenv('PG_PORT')}/{os.getenv('PG_DB_NAME')}"
-
 # Create an engine for PostgreSQL connection
 engine: Engine = create_engine(postgres_url)
-
 # Define the session factory, binding sessions to the PostgreSQL engine
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
@@ -53,6 +43,16 @@ def get_postgres_engine() -> Engine:
     Returns:
         Engine: A connection engine to PostgreSQL.
     """
+    # Print PostgreSQL info
+    print("Connecting to PostgreSQL Database")
+    print("DB_USER:", os.getenv("DB_USER"))
+    print("PG_DB_NAME:", os.getenv("PG_DB_NAME"))
+
+    # Print detailed debug information if DEBUG is enabled
+    if DEBUG:
+        print("PG_HOST:", os.getenv("PG_HOST"))
+        print("PG_PORT:", os.getenv("PG_PORT"))
+
     return engine
 
 
@@ -66,6 +66,16 @@ def get_mongo_client() -> MongoClient:
     Returns:
         MongoClient: A MongoDB client.
     """
+    # Print MongoDB info
+    print("Connecting to MongoDB Database")
+    print("DB_USER:", os.getenv("DB_USER"))
+    print("MONGO_DB_NAME:", os.getenv("MONGO_DB_NAME"))
+
+    # Print detailed debug information if DEBUG is enabled
+    if DEBUG:
+        print("MONGO_HOST:", os.getenv("MONGO_HOST"))
+        print("MONGO_PORT:", os.getenv("MONGO_PORT"))
+
     # Build the MongoDB connection URL from environment variables
     mongo_url = f"mongodb://{os.getenv('DB_USER')}:{os.getenv('DB_PASSWORD')}@{os.getenv('MONGO_HOST')}:{os.getenv('MONGO_PORT')}/{os.getenv('MONGO_DB_NAME')}"
 

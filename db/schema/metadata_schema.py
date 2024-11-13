@@ -123,6 +123,8 @@ class DatasetSampleMetadata(Base):
         PrimaryRadiationTherapy (str): If primary radiation therapy was administered.
         Antibody (str): Antibody used for ChIP-Seq experiments.
         LibraryStrategy (str): Strategy for library preparation.
+        LibrarySource(str): Omics type
+        LibrarySelection(str): Region of interest specificity
         SupplementaryDataType (str): Type of supplementary data file.
         BioSampleRelation (str): External link to BioSample resource.
         SupplementaryFilesFormatAndContent (str): Details of supplementary files.
@@ -162,6 +164,8 @@ class DatasetSampleMetadata(Base):
     PrimaryRadiationTherapy = Column(String, nullable=True)
     Antibody = Column(String, nullable=True)
     LibraryStrategy = Column(String, nullable=True)
+    LibrarySource = Column(String, nullable=True)
+    LibrarySelection = Column(String, nullable=True)
     SupplementaryDataType = Column(String, nullable=True)
     BioSampleRelation = Column(String, nullable=True)
     SupplementaryFilesFormatAndContent = Column(Text, nullable=True)

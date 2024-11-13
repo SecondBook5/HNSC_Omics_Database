@@ -13,3 +13,5 @@ typing
 pytest
 tqdm
 python-dotenv
+requests
+alembic
