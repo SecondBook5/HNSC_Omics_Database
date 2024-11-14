@@ -78,11 +78,9 @@ def test_extract_metadata_success(setup_fields_to_extract, valid_xml_file):
     """
     Test successful extraction of metadata from a well-formed XML file.
     """
-    # Instantiate extractor with valid fields to extract
     extractor = GeoMetadataExtractor(fields_to_extract=setup_fields_to_extract, debug=True)
     metadata = extractor.extract_metadata(valid_xml_file)
 
-    # Assertions for successful extraction of tags and fields
     assert metadata is not None, "Expected metadata to be extracted successfully"
     assert "Sample" in metadata, "Expected 'Sample' tag to be present in metadata"
     assert metadata["Sample"]["Title"] == "Sample Title", "Incorrect title for 'Sample'"
@@ -95,24 +93,25 @@ def test_missing_fields_handling(setup_fields_to_extract, missing_fields_xml_fil
     """
     Test handling of missing fields in the XML file.
     """
-    # Instantiate extractor with fields to extract and debug enabled
     extractor = GeoMetadataExtractor(fields_to_extract=setup_fields_to_extract, debug=True)
     metadata = extractor.extract_metadata(missing_fields_xml_file)
 
-    # Assertions for missing field handling (expecting 'N/A' for missing fields)
+    # Check extracted metadata and verify missing fields as None
     assert metadata is not None, "Expected metadata to be extracted with missing fields"
-    assert metadata["Sample"].get("Organism", "N/A") == "N/A", "Expected 'Organism' to be 'N/A'"
-    assert metadata["Series"].get("Summary", "N/A") == "N/A", "Expected 'Summary' to be 'N/A'"
+    assert metadata["Sample"].get("Organism") is None, "Expected 'Organism' to be None"
+    assert metadata["Series"].get("Summary") is None, "Expected 'Summary' to be None"
+
+    # Prepare output with 'N/A' replacements for None values
+    formatted_metadata = GeoMetadataExtractor.prepare_for_output(metadata)
+    assert formatted_metadata["Sample"]["Organism"] == "N/A", "Expected 'Organism' to be 'N/A' after formatting"
+    assert formatted_metadata["Series"]["Summary"] == "N/A", "Expected 'Summary' to be 'N/A' after formatting"
 
 
 def test_nonexistent_xml_file(setup_fields_to_extract):
     """
     Test that a FileNotFoundError is raised for a non-existent XML file.
     """
-    # Instantiate extractor
     extractor = GeoMetadataExtractor(fields_to_extract=setup_fields_to_extract)
-
-    # Assert FileNotFoundError is raised when file does not exist
     with pytest.raises(FileNotFoundError):
         extractor.extract_metadata("nonexistent_file.xml")
 
@@ -121,16 +120,13 @@ def test_invalid_xml_structure(setup_fields_to_extract, tmp_path):
     """
     Test handling of an invalid XML structure.
     """
-    # Create an invalid XML structure
     invalid_xml_content = "<MINiML><Sample><Title>Sample Title</Title></Sample"
     xml_path = tmp_path / "invalid_structure.xml"
     xml_path.write_text(invalid_xml_content)
 
-    # Instantiate extractor
     extractor = GeoMetadataExtractor(fields_to_extract=setup_fields_to_extract, debug=True)
     metadata = extractor.extract_metadata(str(xml_path))
 
-    # Assert that None is returned for invalid XML structure
     assert metadata is None, "Expected None for invalid XML structure"
 
 
@@ -138,14 +134,24 @@ def test_debug_logging(setup_fields_to_extract, valid_xml_file, capsys):
     """
     Test debug logging output when debug mode is enabled.
     """
-    # Instantiate extractor with debug enabled
     extractor = GeoMetadataExtractor(fields_to_extract=setup_fields_to_extract, debug=True)
     extractor.extract_metadata(valid_xml_file)
 
-    # Capture the debug output
     captured = capsys.readouterr()
-
-    # Check that debug messages are included in the output
     assert "[DEBUG] Extracting metadata from XML file" in captured.out
     assert "[DEBUG] XML tree successfully parsed." in captured.out
     assert "[DEBUG] Completed extraction for tag 'Sample'" in captured.out
+
+
+def test_prepare_for_output_static_method():
+    """
+    Test the prepare_for_output static method to ensure None values are converted to 'N/A'.
+    """
+    raw_metadata = {
+        "Sample": {"iid": "GSM123456", "Title": "Sample Title", "Organism": None},
+        "Series": {"Title": "Series Title", "Summary": None}
+    }
+    formatted_metadata = GeoMetadataExtractor.prepare_for_output(raw_metadata)
+
+    assert formatted_metadata["Sample"]["Organism"] == "N/A", "Expected 'Organism' to be 'N/A' after formatting"
+    assert formatted_metadata["Series"]["Summary"] == "N/A", "Expected 'Summary' to be 'N/A' after formatting"

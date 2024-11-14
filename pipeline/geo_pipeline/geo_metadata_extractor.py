@@ -36,7 +36,7 @@ class GeoMetadataExtractor:
         # Set the debug attribute to enable optional debug logging
         self.debug = debug
 
-    def extract_metadata(self, xml_path: str) -> Optional[Dict[str, Dict[str, str]]]:
+    def extract_metadata(self, xml_path: str) -> Optional[Dict[str, Dict[str, Optional[str]]]]:
         """
         Parses an XML file to extract specified metadata fields.
 
@@ -106,18 +106,17 @@ class GeoMetadataExtractor:
                         # Otherwise, look for a sub-element and retrieve its text
                         sub_element = tag_node.find(field)
                         tag_data[field] = (
-                            sub_element.text.strip() if sub_element is not None and sub_element.text else "N/A"
+                            sub_element.text.strip() if sub_element is not None and sub_element.text else None
                         )
                         # Debug log for sub-element extraction
                         if self.debug:
                             print(f"[DEBUG] Extracted sub-element '{field}': {tag_data[field]}")
                 except AttributeError:
-                    # Handle missing field by setting it to 'N/A' and logging a warning
-                    print(f"Warning: Field '{field}' missing in tag '{tag}'. Setting to 'N/A'.")
-                    tag_data[field] = "N/A"
-                    # Debug log for missing field
+                    # Handle missing field by setting it to 'None' and logging a warning
+                    print(f"Warning: Field '{field}' missing in tag '{tag}'. Setting to None.")
+                    tag_data[field] = None
                     if self.debug:
-                        print(f"[DEBUG] Field '{field}' missing, set to 'N/A'.")
+                        print(f"[DEBUG] Field '{field}' missing, set to None.")
 
             # Add extracted data to metadata dictionary if any data was found
             if not tag_data:
@@ -132,3 +131,19 @@ class GeoMetadataExtractor:
 
         # Return the populated metadata dictionary or None if no data was extracted
         return metadata if metadata else None
+
+    @staticmethod
+    def prepare_for_output(metadata: Dict[str, Dict[str, Optional[str]]]) -> Dict[str, Dict[str, str]]:
+        """
+        Converts any None values in the metadata to 'N/A' for display or export purposes.
+
+        Args:
+            metadata (Dict[str, Dict[str, Optional[str]]]): The extracted metadata.
+
+        Returns:
+            Dict[str, Dict[str, str]]: Metadata with None values replaced by 'N/A'.
+        """
+        return {
+            tag: {field: (value if value is not None else 'N/A') for field, value in fields.items()}
+            for tag, fields in metadata.items()
+        }
