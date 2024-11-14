@@ -1,245 +1,239 @@
 from typing import List, Optional, Dict, Union
 
-
 class XMLTreeNode:
     """
-    A class to represent a node in an XML-like tree structure, including tags, attributes, and text content.
+    Represents a node in an XML-like tree structure, storing tags, attributes, text, and child nodes.
 
     Attributes:
-        tag (str): The name of the XML element.
-        attributes (Dict[str, str]): A dictionary of attribute names and values for the XML element.
-        text (Optional[str]): The text content of the XML element, if any.
-        children (List[XMLTreeNode]): List of child nodes representing nested XML elements.
+        tag (str): The XML element name.
+        attributes (Dict[str, str]): A dictionary of attribute names and values.
+        text (Optional[str]): The text content within the XML element, if any.
+        children (List[XMLTreeNode]): A list of nested child XMLTreeNode objects.
     """
 
     def __init__(self, tag: str, attributes: Optional[Dict[str, str]] = None, text: Optional[str] = None):
-        # Validate that the tag is not empty, as XML elements require a tag name
+        # Raise an error if the tag is empty, as every XML element requires a name
         if not tag:
             raise ValueError("Tag cannot be an empty string.")
-
-        # Set the tag for the current XML element
+        # Set the tag for this XML element
         self.tag = tag
-
-        # Initialize the attributes dictionary; set to empty if not provided
+        # Initialize the attributes dictionary or set to an empty dictionary if None
         self.attributes = attributes if attributes else {}
-
-        # Initialize text content for the XML element; set to empty if not provided
+        # Set text content, defaulting to an empty string if no text is provided
         self.text = text if text else ""
-
-        # Initialize an empty list to store child XMLTreeNode elements
+        # Create an empty list to store child XMLTreeNode objects
         self.children: List[XMLTreeNode] = []
 
     def add_child(self, tag: str, attributes: Optional[Dict[str, str]] = None,
                   text: Optional[str] = None) -> 'XMLTreeNode':
         """
-        Add a child XML element to the current element, with validation for an empty tag.
+        Adds a child XMLTreeNode to this node.
 
         Args:
-            tag (str): The name of the child XML element.
-            attributes (Optional[Dict[str, str]]): The attributes for the child element.
-            text (Optional[str]): The text content for the child element.
+            tag (str): Tag name for the child element.
+            attributes (Optional[Dict[str, str]]): Dictionary of attributes for the child.
+            text (Optional[str]): Text content for the child element.
 
         Returns:
-            XMLTreeNode: The newly created child node.
+            XMLTreeNode: The created child node.
 
         Raises:
             ValueError: If the child tag is empty.
         """
-        # Ensure the child tag is not empty for valid XML element representation
+        # Ensure the tag is provided for the child node
         if not tag:
             raise ValueError("Child tag cannot be an empty string.")
-
-        # Create a new XMLTreeNode instance with the given tag, attributes, and text
+        # Create a new child node with provided tag, attributes, and text
         child_node = XMLTreeNode(tag, attributes, text)
-
-        # Append the newly created child node to the children list
+        # Add the created child node to this node's children list
         self.children.append(child_node)
-
-        # Return the new child node for potential chaining or further modifications
+        # Return the created child node for further chaining if needed
         return child_node
+
+    def find(self, tag: str) -> Optional['XMLTreeNode']:
+        """
+        Finds the first child node with a specific tag within this node's children.
+
+        Args:
+            tag (str): Tag name to search for.
+
+        Returns:
+            Optional[XMLTreeNode]: First matching child node, or None if not found.
+        """
+        # Validate that a tag is specified for searching
+        if not tag:
+            raise ValueError("Search tag cannot be an empty string.")
+        # Iterate over child nodes to find the first node with the matching tag
+        for child in self.children:
+            if child.tag == tag:
+                return child
+        # Return None if no matching tag is found among children
+        return None
 
     def find_children_by_attribute(self, attr_name: str, attr_value: str) -> List['XMLTreeNode']:
         """
-        Find all child elements with a specified attribute and value, returning them in a list.
+        Finds all child nodes with a specific attribute and value.
 
         Args:
-            attr_name (str): The name of the attribute to search for.
-            attr_value (str): The value of the attribute to match.
+            attr_name (str): Attribute name to search.
+            attr_value (str): Attribute value to match.
 
         Returns:
-            List[XMLTreeNode]: List of child elements with the specified attribute and value.
+            List[XMLTreeNode]: List of child nodes with the matching attribute and value.
         """
-        # Initialize a list to hold all matching children
-        matching_children = []
-
-        # Loop through each child and check if it has the specified attribute and value
-        for child in self.children:
-            if child.attributes.get(attr_name) == attr_value:
-                matching_children.append(child)
-
-        # Return the list of all children that matched the attribute and value criteria
-        return matching_children
+        # Return list comprehension of children with specified attribute and value
+        return [child for child in self.children if child.attributes.get(attr_name) == attr_value]
 
 
 class XMLTree:
     """
-    An XML-specific tree structure, allowing traversal and data extraction from XML-like hierarchies.
+    Represents an XML tree structure for traversal and data extraction.
 
     Attributes:
-        root (XMLTreeNode): The root node of the XML tree, representing the root element.
+        root (XMLTreeNode): Root node of the XML tree.
     """
 
     def __init__(self, root_tag: str, root_attributes: Optional[Dict[str, str]] = None):
-        # Validate that the root tag is not empty for a valid XML element
+        # Validate the root tag is provided for the XML tree
         if not root_tag:
             raise ValueError("Root tag cannot be an empty string.")
-
-        # Initialize the root of the XML tree as an XMLTreeNode with the specified tag and attributes
+        # Initialize root node with the specified tag and attributes
         self.root = XMLTreeNode(root_tag, root_attributes)
 
     def traverse_tags(self) -> List[str]:
         """
-        Perform a depth-first traversal of the XML tree, collecting element tags in a list.
+        Performs a depth-first traversal of the XML tree to collect tags.
 
         Returns:
-            List[str]: A list containing the tags of elements visited in depth-first order.
+            List[str]: List of tags in depth-first traversal order.
         """
-        # Initialize an empty list to store tags collected during traversal
+        # Initialize list to store tags encountered during traversal
         result = []
 
         # Define a recursive helper function to traverse the XML tree nodes
         def _traverse(node: XMLTreeNode) -> None:
-            # Append the tag of the current node to the result list
+            # Append the current node's tag to the result list
             result.append(node.tag)
 
             # Recursively traverse each child node
             for child in node.children:
                 _traverse(child)
 
-        # Begin traversal from the root node
+        # Begin traversal starting from the root node
         _traverse(self.root)
-
-        # Return the list of collected tags
+        # Return the list of tags in traversal order
         return result
 
     def find_element_by_tag(self, tag: str) -> Optional[XMLTreeNode]:
         """
-        Find the first element in the XML tree with a specified tag.
+        Searches the XML tree for the first node with a specific tag.
 
         Args:
-            tag (str): The name of the XML element to search for.
+            tag (str): Tag name to search for.
 
         Returns:
-            Optional[XMLTreeNode]: The first element with the specified tag, or None if not found.
+            Optional[XMLTreeNode]: First node with the matching tag, or None if not found.
         """
-        # Validate that the search tag is not empty
+        # Validate that a tag is specified for searching
         if not tag:
             raise ValueError("Search tag cannot be an empty string.")
 
         # Define a recursive helper function to search for the node by tag
         def _find(node: XMLTreeNode) -> Optional[XMLTreeNode]:
-            # If the current node's tag matches the search tag, return this node
+            # Return current node if tag matches
             if node.tag == tag:
                 return node
-
-            # Recursively search each child node for a matching tag
+            # Recursively search each child node
             for child in node.children:
                 found = _find(child)
                 if found:
                     return found
-
-            # Return None if no matching tag is found in this subtree
+            # Return None if no matching node is found
             return None
 
-        # Start the search from the root node and return the result
+        # Start search from root node and return result
         return _find(self.root)
 
     def collect_text_content(self) -> List[str]:
         """
-        Collect the text content of each element in the XML tree in depth-first order.
+        Collects text content from each node in the XML tree.
 
         Returns:
-            List[str]: A list of text content from each element with non-empty text.
+            List[str]: List of non-empty text content from nodes.
         """
-        # Initialize an empty list to store text content from nodes
+        # Initialize result list to store text content
         result = []
 
         # Define a recursive helper function to collect text content
         def _collect_text(node: XMLTreeNode) -> None:
-            # Add the text content of the current node to the result if it is non-empty
+            # Append non-empty text content to result
             if node.text:
                 result.append(node.text)
-
-            # Recursively collect text content from each child node
+            # Recursively collect text from each child node
             for child in node.children:
                 _collect_text(child)
 
-        # Start collecting text from the root node
+        # Begin text collection starting from the root node
         _collect_text(self.root)
-
-        # Return the list of collected text content
+        # Return the collected text content list
         return result
 
     def collect_elements_with_specific_tags(self, tags: List[str]) -> List[Dict[str, Union[str, Dict[str, str]]]]:
         """
-        Traverse the XML tree and collect elements with specific tags and their attributes.
+        Collects elements with specific tags, storing their attributes and text.
 
         Args:
-            tags (List[str]): The list of tags to collect from the tree.
+            tags (List[str]): List of tags to collect.
 
         Returns:
-            List[Dict[str, Union[str, Dict[str, str]]]]: A list of dictionaries representing elements with the specified tags, each containing 'tag', 'attributes', and 'text'.
+            List[Dict[str, Union[str, Dict[str, str]]]]: List of dictionaries with elements' tag, attributes, and text.
         """
-        # Initialize an empty list to store dictionaries of elements with specific tags
+        # Initialize result list for specific tag elements
         result = []
 
         # Define a recursive helper function to collect nodes with specified tags
         def _collect_specific(node: XMLTreeNode) -> None:
-            # If the current node's tag is in the list of tags to collect, add it to the result
+            # Add node info to result if tag is in specified tags
             if node.tag in tags:
                 result.append({
                     "tag": node.tag,
                     "attributes": node.attributes,
                     "text": node.text
                 })
-
-            # Recursively collect specific tags from each child node
+            # Recursively collect specified tags from child nodes
             for child in node.children:
                 _collect_specific(child)
 
-        # Start collecting elements with specific tags from the root node
+        # Start collecting specific tags from root node
         _collect_specific(self.root)
-
-        # Return the list of collected elements with specified tags and attributes
+        # Return list of elements with specified tags
         return result
 
     def find_elements_by_tag_and_attribute(self, tag: str, attr_name: str, attr_value: str) -> List[XMLTreeNode]:
         """
-        Find all elements with a specific tag and attribute value.
+        Finds elements with a specific tag and attribute.
 
         Args:
-            tag (str): The tag name to search for.
-            attr_name (str): The name of the attribute.
-            attr_value (str): The value of the attribute.
+            tag (str): Tag name to search for.
+            attr_name (str): Attribute name.
+            attr_value (str): Attribute value to match.
 
         Returns:
-            List[XMLTreeNode]: List of nodes matching the tag and attribute criteria.
+            List[XMLTreeNode]: List of nodes with matching tag and attribute.
         """
-        # Initialize an empty list to store matches
+        # Initialize list to store matching nodes
         matches = []
 
         # Define a recursive helper function to find nodes by tag and attribute
         def _find(node: XMLTreeNode):
-            # Check if the current node's tag and attribute match the search criteria
+            # Add node to matches if tag and attribute match
             if node.tag == tag and node.attributes.get(attr_name) == attr_value:
                 matches.append(node)
-
-            # Recursively search each child node for matches
+            # Recursively search each child for matches
             for child in node.children:
                 _find(child)
 
-        # Start the search from the root node
+        # Begin search from root node
         _find(self.root)
-
-        # Return the list of all matching nodes
+        # Return list of matching nodes
         return matches
