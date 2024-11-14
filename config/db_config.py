@@ -3,8 +3,7 @@
 # It provides unified access to PostgreSQL and MongoDB connections, handling session management, error handling,
 # and defensive programming for reliable database operations across the project.
 
-from config.postgres_config import get_postgres_session, \
-    engine as postgres_engine  # Import PostgreSQL session and engine from postgres_config
+from config.postgres_config import get_postgres_session, engine as postgres_engine  # Import PostgreSQL session and engine from postgres_config
 from config.mongo_config import get_mongo_client  # Import MongoDB client function from mongo_config
 from sqlalchemy.ext.declarative import declarative_base  # Import declarative_base to define SQLAlchemy ORM models
 from sqlalchemy.exc import SQLAlchemyError  # Import SQLAlchemyError for error handling in database operations

@@ -5,7 +5,7 @@ import pytest
 import tarfile
 from unittest.mock import patch
 from pathlib import Path
-from pipeline.geo_pipeline.geo_metadata_downloader import GeoDataDownloader
+from pipeline.geo_pipeline.geo_metadata_downloader import GeoMetadataDownloader
 import requests
 
 @pytest.fixture
@@ -34,7 +34,7 @@ def downloader(setup_output_dir):
     Returns:
         GeoDataDownloader: Instance with debugging enabled.
     """
-    return GeoDataDownloader(output_dir=str(setup_output_dir), debug=True)
+    return GeoMetadataDownloader(output_dir=str(setup_output_dir), debug=True)
 
 @patch("requests.get")
 def test_download_file_success(mock_get, downloader, setup_output_dir):

@@ -3,7 +3,7 @@
 import concurrent.futures  # For parallel execution of tasks
 import logging  # For logging process information and errors
 from abc import ABC, abstractmethod  # For defining an abstract base class
-from typing import List, Optional, Any, Dict, Union  # For type hints
+from typing import List, Optional, Any, Callable, Dict, Union  # Added Callable for type hints with processing function
 import requests  # For handling HTTP requests to download resources
 import os  # For file and directory management
 
@@ -56,16 +56,18 @@ class ParallelProcessor(ABC):
         """
         pass  # Must be implemented by subclass
 
-    def execute(self) -> None:
+    def execute(self, process_func: Callable[[str], None]) -> None:
         """
-        Executes the parallel download and processing of resources.
-        Each resource is handled independently, reducing memory consumption.
+        Executes the provided processing function in parallel on the specified resources.
+
+        Args:
+            process_func (Callable[[str], None]): The function to process each resource.
         """
         # Set up ThreadPoolExecutor for parallel execution
         with concurrent.futures.ThreadPoolExecutor() as executor:
             # Map resource ID to its respective download and process task
             future_to_resource_id = {
-                executor.submit(self.download_and_process, resource_id): resource_id
+                executor.submit(process_func, resource_id): resource_id
                 for resource_id in self.resource_ids
             }
 

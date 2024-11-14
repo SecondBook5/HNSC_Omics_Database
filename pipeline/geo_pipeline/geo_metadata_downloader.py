@@ -7,7 +7,7 @@ import os
 import requests
 
 
-class GeoDataDownloader(DataDownloader):
+class GeoMetadataDownloader(DataDownloader):
     """
     GEO-specific data downloader that implements DataDownloader for GEO XML files.
     Downloads and extracts GEO XML files by constructing URLs based on GEO series ID.

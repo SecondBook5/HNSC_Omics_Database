@@ -1,222 +1,148 @@
-"""
-geo_metadata_pipeline.py
-
-This script handles the extraction, transformation, and loading (ETL) of GEO metadata from XML files
-for the HNSC Omics Database project. It parses XML files to retrieve relevant metadata fields and structures
-them for ingestion into DatasetSeriesMetadata and DatasetSampleMetadata tables in the database.
-
-Functions:
-    - load_geo_ids: Loads GEO series IDs from a text file.
-    - download_miniml_file: Downloads and extracts a MINiML XML file for a given GEO series ID.
-    - parse_geo_xml: Parses XML files to extract GEO metadata.
-    - get_namespace: Extracts the XML namespace for handling namespaced tags.
-    - process_series_metadata: Extracts series-level metadata from XML.
-    - process_sample_metadata: Extracts sample-level metadata and replaces "NA" with None for certain fields.
-    - ingest_metadata_to_db: Loads the validated metadata into the database using SQLAlchemy ORM models.
-"""
-
 import os
-import requests
-import tarfile
-import xml.etree.ElementTree as ET
-from sqlalchemy.orm import Session
-from config.db_config import engine  # Adjust this import path as needed
-from db.schema.metadata_schema import DatasetSeriesMetadata, DatasetSampleMetadata  # ORM models for database schema
+import re
+import json
+import logging
+from retry import retry
+import traceback
+from utils.connection_checker import DatabaseConnectionChecker
+from utils.validate_tags import validate_tags
+from pipeline.geo_pipeline.geo_metadata_downloader import GeoMetadataDownloader
+from pipeline.geo_pipeline.geo_metadata_extractor import GeoMetadataExtractor
+from pipeline.geo_pipeline.geo_metadata_uploader import GeoMetadataUploader
+from utils.parallel_processing import GEODataProcessor
+from config.db_config import get_postgres_engine
+from db.schema.metadata_schema import DatasetSeriesMetadata, DatasetSampleMetadata
+from utils.xml_tree_parser import parse_and_populate_xml_tree
 
-# Directory to save downloaded MINiML metadata files
-METADATA_DIR = "../resources/data/metadata/geo_metadata"
-GEO_ID_FILE = "../resources/geo_ids.txt"
-os.makedirs(METADATA_DIR, exist_ok=True)
-
-def load_geo_ids(geo_id_file: str) -> list:
-    """Load GEO IDs from a text file."""
-    with open(geo_id_file, 'r') as file:
-        geo_ids = [line.strip() for line in file if line.strip()]
-    return geo_ids
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 
-def download_miniml_file(gse_id: str) -> str:
-    """
-    Download and extract a MINiML XML file for a specified GEO series (GSE) ID.
+# Define the project root directory based on the current file's known structure
+ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
-    Args:
-        gse_id (str): The GEO Series ID for the file to download.
+# Define paths for resources and configurations, relative to the project root
+GEO_IDS_FILE = os.path.join(ROOT_DIR, "resources/geo_ids.txt")
+TAGS_TEMPLATE_FILE = os.path.join(ROOT_DIR, "resources/geo_tag_template.json")
+OUTPUT_DIR = os.path.join(ROOT_DIR, "resources/data/metadata/geo_metadata")
 
-    Returns:
-        str: Path to the extracted XML file if successful, None otherwise.
-    """
-    # Generate URL and file paths based on the GEO ID
-    stub = gse_id[:-3] + 'nnn'
-    url = f"https://ftp.ncbi.nlm.nih.gov/geo/series/{stub}/{gse_id}/miniml/{gse_id}_family.xml.tgz"
-    output_archive = os.path.join(METADATA_DIR, f"{gse_id}_family.xml.tgz")
-    output_xml_file = os.path.join(METADATA_DIR, f"{gse_id}_family.xml")
+GEO_ID_PATTERN = re.compile(r"^GSE\d{3,}$")
 
-    print(f"Attempting to download MINiML file for accession {gse_id}...")
-
+def initialize_database() -> None:
     try:
-        # Download the tar.gz archive containing the MINiML XML file
-        response = requests.get(url, timeout=30)
-        response.raise_for_status()
+        engine = get_postgres_engine()
+        DatasetSeriesMetadata.metadata.create_all(engine)
+        DatasetSampleMetadata.metadata.create_all(engine)
+        logger.info("Database tables initialized successfully.")
+    except Exception as e:
+        logger.error(f"Database initialization failed: {e}")
+        raise RuntimeError("Failed to initialize database tables") from e
 
-        # Write the downloaded content to the archive file
-        with open(output_archive, 'wb') as file:
-            file.write(response.content)
-        print(f"Downloaded MINiML file for {gse_id} successfully.")
+def load_geo_ids(file_path: str) -> list:
+    try:
+        with open(file_path, 'r') as f:
+            geo_ids = [line.strip() for line in f if line.strip()]
 
-        # Extract the XML file from the archive
-        with tarfile.open(output_archive, 'r:gz') as tar:
-            tar.extractall(path=METADATA_DIR)
-        print(f"Extracted MINiML file: {output_xml_file}")
+        invalid_ids = [geo_id for geo_id in geo_ids if not GEO_ID_PATTERN.match(geo_id)]
+        if invalid_ids:
+            raise ValueError(f"Invalid GEO ID format for IDs: {invalid_ids}")
 
-    except requests.exceptions.RequestException as e:
-        print(f"Failed to download MINiML file for {gse_id} due to network error: {e}")
+        logger.info(f"Loaded {len(geo_ids)} GEO IDs from {file_path}.")
+        return geo_ids
+    except (FileNotFoundError, ValueError) as e:
+        logger.error(f"Error loading GEO IDs: {e}")
+        raise
+
+def load_and_validate_fields(file_path: str) -> dict:
+    try:
+        with open(file_path, 'r') as f:
+            fields_to_extract = json.load(f)
+
+        required_keys = {"Sample", "Series"}
+        missing_keys = required_keys - fields_to_extract.keys()
+        if missing_keys:
+            raise ValueError(f"Missing required tags in extraction fields: {missing_keys}")
+
+        logger.info(f"Loaded fields from {file_path}.")
+        return fields_to_extract
+    except (FileNotFoundError, json.JSONDecodeError, ValueError) as e:
+        logger.error(f"Error loading fields from JSON: {e}")
+        raise
+
+@retry(tries=3, delay=2)
+def safe_download_file(downloader: GeoMetadataDownloader, geo_id: str) -> str:
+    try:
+        file_path = downloader.download_file(geo_id)
+        if not file_path:
+            logger.error(f"Failed to download GEO ID: {geo_id}")
+            return None
+        return file_path
+    except Exception as e:
+        logger.error(f"Download failed for GEO ID {geo_id}: {e}")
+        logger.debug(traceback.format_exc())
         return None
-    finally:
-        # Clean up by removing the archive file
-        if os.path.exists(output_archive):
-            os.remove(output_archive)
 
-    return output_xml_file
+def process_geo_id_wrapper(geo_id: str, downloader, extractor, uploader, fields_to_extract):
+    """Wrapper function for processing GEO IDs in parallel."""
+    process_geo_id(geo_id, downloader, extractor, uploader, fields_to_extract)
 
-
-def parse_geo_xml(xml_path: str) -> ET.ElementTree:
-    """
-    Parse GEO XML file to extract metadata elements.
-
-    Args:
-        xml_path (str): Path to the XML file to parse.
-
-    Returns:
-        ET.ElementTree: Parsed XML tree.
-    """
+def process_geo_id(geo_id: str, downloader: GeoMetadataDownloader, extractor: GeoMetadataExtractor,
+                   uploader: GeoMetadataUploader, fields_to_extract: dict) -> None:
+    logger.info(f"Processing GEO ID: {geo_id}")
     try:
-        # Parse the XML file and return the ElementTree object
-        tree = ET.parse(xml_path)
-        return tree
-    except ET.ParseError as e:
-        raise ValueError(f"Error parsing XML file at {xml_path}: {e}")
-
-
-def get_namespace(element: ET.Element) -> str:
-    """
-    Extract XML namespace from an element.
-
-    Args:
-        element (ET.Element): XML element to get the namespace from.
-
-    Returns:
-        str: The namespace string.
-    """
-    return element.tag[element.tag.find("{"):element.tag.rfind("}") + 1]
-
-
-def process_series_metadata(tree: ET.ElementTree) -> dict:
-    """
-    Processes series-level metadata from an XML tree.
-
-    Args:
-        tree (ET.ElementTree): Parsed XML tree.
-
-
-    Returns:
-        dict: Dictionary of series metadata.
-    """
-    root = tree.getroot()
-    ns = get_namespace(root)  # Extract namespace
-
-    # Extract series metadata fields
-    series_metadata = {
-        'SeriesID': root.findtext(f'.//{ns}Series iid'),
-        'Title': root.findtext(f'.//{ns}Title'),
-        'GEOAccession': root.findtext(f'.//{ns}Accession'),
-        'Status': root.findtext(f'.//{ns}Status'),
-        'SubmissionDate': root.findtext(f'.//{ns}Submission-Date'),
-        'LastUpdateDate': root.findtext(f'.//{ns}Last-Update-Date'),
-        'PubMedID': root.findtext(f'.//{ns}Pubmed-ID'),
-        'Summary': root.findtext(f'.//{ns}Summary'),
-        'OverallDesign': root.findtext(f'.//{ns}Overall-Design'),
-        'SeriesType': root.findtext(f'.//{ns}Type'),
-        'PlatformID': root.findtext(f'.//{ns}Platform-Ref'),
-        'Organism': root.findtext(f'.//{ns}Organism'),
-        'Contributors': root.findtext(f'.//{ns}Contributor'),
-        'DatabaseName': root.findtext(f'.//{ns}DatabaseName'),
-        'DatabasePublicID': root.findtext(f'.//{ns}DatabasePublicID'),
-        'DatabaseOrganization': root.findtext(f'.//{ns}DatabaseOrganization'),
-        'DatabaseWebLink': root.findtext(f'.//{ns}DatabaseWebLink'),
-        'DatabaseEmail': root.findtext(f'.//{ns}DatabaseEmail')
-    }
-    print("Parsed Series Metadata:", series_metadata)
-    return series_metadata
-
-
-def process_sample_metadata(tree: ET.ElementTree, series_id: str) -> list:
-    """
-    Processes sample-level metadata from an XML tree.
-
-    Args:
-        tree (ET.ElementTree): Parsed XML tree.
-        series_id (str): Series ID for each sample.
-
-    Returns:
-        list: List of dictionaries, each containing metadata for a sample.
-    """
-    root = tree.getroot()
-    ns = get_namespace(root)  # Extract namespace
-    sample_metadata_list = []
-
-    for sample in root.findall(f'.//{ns}Sample'):
-        sample_metadata = {
-            'SeriesID': series_id,  # Assign SeriesID
-            'SampleID': sample.findtext(f'.//{ns}Accession'),
-            'GEOAccession': sample.findtext(f'.//{ns}Accession'),
-            'Title': sample.findtext(f'.//{ns}Title'),
-            # Additional fields extracted here...
-        }
-
-        # Replace 'NA' values and strip whitespace
-        sample_metadata = {k: (v.strip() if v and v.strip() != "NA" else None) for k, v in sample_metadata.items()}
-
-        sample_metadata_list.append(sample_metadata)
-    return sample_metadata_list
-
-
-def ingest_metadata_to_db(series_metadata: dict, sample_metadata_list: list):
-    """
-    Inserts series and sample metadata into the database.
-
-    Args:
-        series_metadata (dict): Series metadata dictionary.
-        sample_metadata_list (list): List of sample metadata dictionaries.
-    """
-    # Use SQLAlchemy session for database interaction
-    with Session(engine) as session:
-        if not series_metadata['SeriesID']:
-            print("Essential series metadata missing; skipping insertion.")
+        file_path = safe_download_file(downloader, geo_id)
+        if not file_path:
             return
 
-        series_record = DatasetSeriesMetadata(**series_metadata)
-        session.add(series_record)
+        xml_tree = parse_and_populate_xml_tree(file_path, fields_to_extract)
+        if not validate_tags(xml_tree, fields_to_extract):
+            logger.error(f"Validation failed for GEO ID {geo_id}. Skipping.")
+            return
 
-        for sample_metadata in sample_metadata_list:
-            sample_record = DatasetSampleMetadata(**sample_metadata)
-            session.add(sample_record)
+        metadata = extractor.extract_metadata(file_path)
+        if metadata is None:
+            logger.error(f"Metadata extraction failed for GEO ID {geo_id}.")
+            return
 
-        session.commit()
-        print("Metadata ingested successfully into the database.")
+        uploader.upload_metadata(metadata)
+        logger.info(f"Metadata successfully uploaded for GEO ID: {geo_id}")
 
+    except Exception as e:
+        logger.error(f"Error processing GEO ID {geo_id}: {e}")
+        logger.debug(traceback.format_exc())
 
 def main():
-    """
-    Main execution function that downloads, parses, processes, and ingests metadata.
-    """
-    geo_ids = load_geo_ids(GEO_ID_FILE)
-    for gse_id in geo_ids:
-        xml_path = download_miniml_file(gse_id)
-        if xml_path:
-            tree = parse_geo_xml(xml_path)
-            filename = os.path.basename(xml_path)
 
+    uploader = None  # Initialize to avoid referencing before assignment
 
+    try:
+        initialize_database()
+        geo_ids = load_geo_ids(GEO_IDS_FILE)
+        fields_to_extract = load_and_validate_fields(TAGS_TEMPLATE_FILE)
+
+        downloader = GeoMetadataDownloader(OUTPUT_DIR)
+        extractor = GeoMetadataExtractor(fields_to_extract, debug=True)
+
+        connection_checker = DatabaseConnectionChecker()
+        if not connection_checker.check_postgresql_connection():
+            logger.error("PostgreSQL connection could not be established. Exiting.")
+            return
+
+        uploader = GeoMetadataUploader(engine=get_postgres_engine(), debug=True)
+
+        geo_processor = GEODataProcessor(geo_ids, OUTPUT_DIR, extractor)
+        geo_processor.execute(lambda geo_id: process_geo_id_wrapper(geo_id, downloader, extractor, uploader, fields_to_extract))
+
+    except Exception as e:
+        logger.critical(f"Pipeline encountered a critical error: {e}")
+        logger.debug(traceback.format_exc())
+
+    finally:
+        if uploader:
+            uploader.disconnect()
+        logger.info("Pipeline completed. All resources closed.")
 
 if __name__ == "__main__":
     main()
+
+

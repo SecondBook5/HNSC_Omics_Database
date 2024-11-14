@@ -9,8 +9,9 @@
       <excludeFolder url="file://$MODULE_DIR$/logs" />
       <excludeFolder url="file://$MODULE_DIR$/.idea/dataSources" />
       <excludeFolder url="file://$MODULE_DIR$/notebooks/.ipynb_checkpoints" />
+      <excludeFolder url="file://$MODULE_DIR$/.vscode" />
     </content>
-    <orderEntry type="jdk" jdkName="$USER_HOME$/micromamba/envs/HNSC_Omics" jdkType="Python SDK" />
+    <orderEntry type="jdk" jdkName="/home/secondbook5/micromamba/envs/HNSC_Omics" jdkType="Python SDK" />
     <orderEntry type="sourceFolder" forTests="false" />
   </component>
 </module>
