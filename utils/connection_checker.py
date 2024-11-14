@@ -1,4 +1,4 @@
-# HNSC_Omics_Database/utils/connection_checker.py
+# File: utils/connection_checker.py
 # This script provides functionality to check connections to PostgreSQL and MongoDB databases
 # with retry logic to handle transient connection issues. It uses connection functions from db_config.py,
 # keeping configuration centralized and enhancing modularity.

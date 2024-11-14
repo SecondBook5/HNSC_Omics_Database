@@ -1,4 +1,4 @@
-# File: pipeline/geo_pipeline/geo_data_downloader.py
+# File: pipeline/geo_pipeline/geo_metadata_downloader.py
 
 from pipeline.abstract_etl.data_downloader import DataDownloader
 from typing import Optional

@@ -1,11 +1,11 @@
-# File: tests/geo_pipeline_tests/test_geo_data_downloader.py
+# File: tests/geo_pipeline_tests/test_geo_metadata_downloader.py
 
 import os
 import pytest
 import tarfile
 from unittest.mock import patch
 from pathlib import Path
-from pipeline.geo_pipeline.geo_data_downloader import GeoDataDownloader
+from pipeline.geo_pipeline.geo_metadata_downloader import GeoDataDownloader
 import requests
 
 @pytest.fixture
