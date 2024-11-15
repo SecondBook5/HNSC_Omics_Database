@@ -1,159 +1,142 @@
-# File: pipeline/geo_pipeline/geo_metadata_extractor.py
-
+from lxml import etree
 from typing import Dict, Optional
-import xml.etree.ElementTree as ET
+from datetime import datetime
+import re
 import json
-from utils.xml_tree_parser import parse_and_populate_xml_tree
-from utils.validate_tags import validate_tags
+import time
+
+# Regular expressions for GEO accession and sample ID validation
+GEO_ACCESSION_PATTERN = re.compile(r'^GSE\d+$')
+SAMPLE_ID_PATTERN = re.compile(r'^GSM\d+$')
 
 
-# Define default paths for fields and XML file
-FIELDS_FILE = "/mnt/c/Users/ajboo/BookAbraham/BiologicalDatabases/HNSC_Omics_Database/resources/geo_tag_template.json"
-XML_FILE = "/mnt/c/Users/ajboo/BookAbraham/BiologicalDatabases/HNSC_Omics_Database/resources/data/metadata/geo_metadata/GSE112026_family.xml"
-
-
-class GeoMetadataExtractor:
-    """
-    Extracts metadata from GEO XML files by parsing XML and retrieving fields specified
-    in fields_to_extract, ensuring each required field is validated and present.
-
-    Attributes:
-        fields_to_extract (Dict[str, str]): Specifies tags and fields to extract with their paths.
-        debug (bool): If True, enables debug output for detailed tracing of the extraction process.
-    """
-
-    def __init__(self, fields_to_extract: Dict[str, str], debug: bool = False) -> None:
-        """
-        Initialize the GeoMetadataExtractor with specific fields to extract and optional debug mode.
-
-        Args:
-            fields_to_extract (Dict[str, str]): Flattened dictionary defining tags and fields to extract.
-            debug (bool): Enable debug output if True (default is False).
-
-        Raises:
-            ValueError: If fields_to_extract is empty or not a dictionary.
-        """
-        # Validate that fields_to_extract is a dictionary and not empty
-        if not fields_to_extract or not isinstance(fields_to_extract, dict):
-            raise ValueError("fields_to_extract must be a non-empty dictionary.")
-
-        # Store fields_to_extract directly since it’s already flattened
-        self.fields_to_extract = fields_to_extract
-
-        # Set debug mode for extra output during extraction
-        self.debug = debug
-
-    def print_xml_structure(self, node, indent=""):
-        """
-        Recursively prints the XML tree structure for debugging purposes.
-
-        Args:
-            node: The root or current node of the XMLTree structure.
-            indent (str): Used for formatting nested elements.
-        """
-        # Print the node tag with current indentation
-        print(f"{indent}<{node.tag}>")
-
-        # Print attributes of the node if they exist
-        if node.attributes:
-            print(f"{indent}  Attributes: {node.attributes}")
-
-        # Recursively print each child with increased indentation
-        for child in node.children:
-            self.print_xml_structure(child, indent + "  ")
-
-    def extract_metadata(self, xml_path: str) -> Optional[Dict[str, Optional[str]]]:
-        """
-        Parses and validates XML file to extract specified metadata fields.
-
-        Args:
-            xml_path (str): Path to the XML file to be parsed.
-
-        Returns:
-            Optional[Dict[str, Optional[str]]]: A dictionary with fields and their extracted values,
-            or None if parsing fails or required fields are missing.
-        """
-        # Print debug message for extraction start if debug is enabled
-        if self.debug:
-            print(f"[DEBUG] Extracting metadata from XML file: {xml_path}")
-
-        # Attempt to parse the XML file into an XMLTree structure
-        try:
-            # Parse the XML tree using fields_to_extract paths as the guide
-            xml_tree = parse_and_populate_xml_tree(xml_path, list(self.fields_to_extract.values()))
-
-            # Confirm successful parsing if debug mode is enabled
-            if self.debug:
-                print("[DEBUG] XML tree successfully parsed.")
-        except FileNotFoundError:
-            print(f"Error: XML file '{xml_path}' not found.")
-            return None
-        except ET.ParseError as e:
-            print(f"Error parsing XML file at '{xml_path}': {e}")
-            return None
-        except Exception as e:
-            print(f"Unexpected error while parsing '{xml_path}': {e}")
-            return None
-
-        # Print the XML structure for verification if debug is enabled
-        if self.debug:
-            print("[DEBUG] Printing XML structure for verification:")
-            self.print_xml_structure(xml_tree.root)
-
-        # Validate the XML structure against fields_to_extract
-        if not validate_tags(xml_tree, self.fields_to_extract, debug=self.debug):
-            print("Error: XML does not contain all required tags and fields.")
-            return None
-
-        # Initialize a dictionary to store extracted metadata
-        metadata = {}
-        # Iterate over each field and extract data from the parsed XML
-        for field_name, field_path in self.fields_to_extract.items():
-            # Attempt to find the element in XML and extract the required field
-            element = xml_tree.root.find(field_path)
-            metadata[field_name] = element.text.strip() if element is not None and element.text else None
-
-            # Print debug message for each extracted field
-            if self.debug:
-                print(f"[DEBUG] Extracted field '{field_name}' with value: {metadata[field_name]}")
-
-        # Return the populated metadata dictionary, or None if empty
-        return metadata if metadata else None
-
-    @staticmethod
-    def prepare_for_output(metadata: Dict[str, Optional[str]]) -> Dict[str, str]:
-        """
-        Converts any None values in the metadata to 'N/A' for display or export purposes.
-
-        Args:
-            metadata (Dict[str, Optional[str]]): The extracted metadata.
-
-        Returns:
-            Dict[str, str]: Metadata with None values replaced by 'N/A'.
-        """
-        # Replace all None values with 'N/A' for clearer output
-        return {field: (value if value is not None else 'N/A') for field, value in metadata.items()}
-
-
-# Automatically load files if the script is executed directly
-if __name__ == "__main__":
-    # Attempt to load fields to extract from the specified JSON file
+def parse_date(date_str: str) -> Optional[str]:
+    """Converts a date string to ISO format or returns None if invalid."""
     try:
-        with open(FIELDS_FILE, 'r') as f:
-            fields_to_extract = json.load(f)
-    except FileNotFoundError:
-        print(f"Error: Fields file '{FIELDS_FILE}' not found.")
-        exit(1)
+        return datetime.strptime(date_str, "%Y-%m-%d").date().isoformat() if date_str else None
+    except ValueError:
+        return None
 
-    # Initialize an instance of GeoMetadataExtractor with debug mode enabled
-    extractor = GeoMetadataExtractor(fields_to_extract=fields_to_extract, debug=True)
 
-    # Attempt to extract metadata from the specified XML file
-    extracted_metadata = extractor.extract_metadata(XML_FILE)
+def process_series_data(series_elem: etree._Element, ns: Dict[str, str]) -> Optional[Dict[str, Optional[str]]]:
+    """Parses a single Series element."""
+    try:
+        series_id = series_elem.findtext('geo:Accession', default="", namespaces=ns)
+        if not GEO_ACCESSION_PATTERN.match(series_id):
+            print(f"Invalid Series ID: {series_id}")
+            return None
 
-    # Print extracted metadata or notify if extraction failed
-    if extracted_metadata:
-        print("Extracted Metadata:")
-        print(json.dumps(extracted_metadata, indent=4))
-    else:
-        print("No metadata extracted.")
+        status = series_elem.find('geo:Status', ns)
+        relations = [
+            {
+                "type": relation.attrib.get("type", "Unknown"),
+                "target": relation.attrib.get("target", "")
+            }
+            for relation in series_elem.findall('geo:Relation', ns)
+        ]
+        supplementary_data = "; ".join([
+            supp_data.text.strip()
+            for supp_data in series_elem.findall('geo:Supplementary-Data', ns) if supp_data.text
+        ])
+
+        return {
+            "SeriesID": series_id,
+            "Title": series_elem.findtext('geo:Title', default="", namespaces=ns),
+            "SubmissionDate": parse_date(
+                status.findtext('geo:Submission-Date', default="", namespaces=ns)) if status else None,
+            "LastUpdateDate": parse_date(
+                status.findtext('geo:Last-Update-Date', default="", namespaces=ns)) if status else None,
+            "PubMedID": series_elem.findtext('geo:Pubmed-ID', default="", namespaces=ns),
+            "Summary": series_elem.findtext('geo:Summary', default="", namespaces=ns),
+            "OverallDesign": series_elem.findtext('geo:Overall-Design', default="", namespaces=ns),
+            "Relations": json.dumps(relations),
+            "SupplementaryData": supplementary_data
+        }
+    except Exception as e:
+        print(f"Error parsing Series element: {e}")
+        return None
+
+
+def process_sample_data(sample_elem: etree._Element, ns: Dict[str, str]) -> Optional[Dict[str, Optional[str]]]:
+    """Parses a single Sample element."""
+    try:
+        sample_id = sample_elem.findtext('geo:Accession', default="", namespaces=ns)
+        if not SAMPLE_ID_PATTERN.match(sample_id):
+            print(f"Invalid Sample ID: {sample_id}")
+            return None
+
+        status = sample_elem.find('geo:Status', ns)
+        characteristics = [
+            {
+                "tag": char.attrib.get("tag", "Unknown"),
+                "value": char.text.strip() if char.text else ""
+            }
+            for char in sample_elem.findall('geo:Channel/geo:Characteristics', ns)
+        ]
+        supplementary_data = "; ".join([
+            supp_data.text.strip()
+            for supp_data in sample_elem.findall('geo:Supplementary-Data', ns) if supp_data.text
+        ])
+        relations = [
+            {
+                "type": relation.attrib.get("type", "Unknown"),
+                "target": relation.attrib.get("target", "")
+            }
+            for relation in sample_elem.findall('geo:Relation', ns)
+        ]
+
+        return {
+            "SampleID": sample_id,
+            "Title": sample_elem.findtext('geo:Title', default="", namespaces=ns),
+            "SubmissionDate": parse_date(
+                status.findtext('geo:Submission-Date', default="", namespaces=ns)) if status else None,
+            "LastUpdateDate": parse_date(
+                status.findtext('geo:Last-Update-Date', default="", namespaces=ns)) if status else None,
+            "Organism": sample_elem.findtext('geo:Channel/geo:Organism', default="", namespaces=ns),
+            "Characteristics": json.dumps(characteristics),
+            "Relations": json.dumps(relations),
+            "SupplementaryData": supplementary_data
+        }
+    except Exception as e:
+        print(f"Error parsing Sample element: {e}")
+        return None
+
+
+def parse_geo_metadata(file_path: str):
+    """Parses the GEO MINiML file using lxml and prints statistics."""
+    start_time = time.time()
+    ns = {'geo': 'http://www.ncbi.nlm.nih.gov/geo/info/MINiML'}
+
+    series_count = 0
+    sample_count = 0
+
+    print("Parsing Series data...")
+    context = etree.iterparse(file_path, events=("start", "end"), tag="{http://www.ncbi.nlm.nih.gov/geo/info/MINiML}Series")
+    for event, elem in context:
+        if event == "end":
+            series_data = process_series_data(elem, ns)
+            if series_data:
+                print(json.dumps(series_data, indent=2))
+                series_count += 1
+            elem.clear()
+
+    print("Parsing Sample data...")
+    context = etree.iterparse(file_path, events=("start", "end"), tag="{http://www.ncbi.nlm.nih.gov/geo/info/MINiML}Sample")
+    for event, elem in context:
+        if event == "end":
+            sample_data = process_sample_data(elem, ns)
+            if sample_data:
+                print(json.dumps(sample_data, indent=2))
+                sample_count += 1
+            elem.clear()
+
+    elapsed_time = time.time() - start_time
+    print("\nParsing completed.")
+    print(f"Series parsed: {series_count}")
+    print(f"Samples parsed: {sample_count}")
+    print(f"Time elapsed: {elapsed_time:.2f} seconds")
+
+
+if __name__ == "__main__":
+    file_path = "../../resources/data/metadata/geo_metadata/GSE112026_family.xml"
+    parse_geo_metadata(file_path)

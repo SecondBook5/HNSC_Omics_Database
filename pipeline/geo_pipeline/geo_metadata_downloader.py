@@ -1,10 +1,9 @@
-# File: pipeline/geo_pipeline/geo_metadata_downloader.py
-
-from pipeline.abstract_etl.data_downloader import DataDownloader
-from typing import Optional
 import tarfile
 import os
 import requests
+import logging
+from pipeline.abstract_etl.data_downloader import DataDownloader
+from typing import Optional
 
 
 class GeoMetadataDownloader(DataDownloader):
@@ -14,12 +13,12 @@ class GeoMetadataDownloader(DataDownloader):
 
     Attributes:
         base_url (str): Base URL for GEO data repository.
-        debug (bool): Flag to control debug output.
+        logger (logging.Logger): Logger instance for debug and info output.
     """
 
     def __init__(self, output_dir: str, debug: bool = False) -> None:
         """
-        Initializes GeoDataDownloader with output directory and optional debug flag.
+        Initializes GeoMetadataDownloader with output directory and optional debug flag.
 
         Args:
             output_dir (str): Directory to save downloaded files.
@@ -27,7 +26,26 @@ class GeoMetadataDownloader(DataDownloader):
         """
         super().__init__(output_dir)
         self.base_url = "https://ftp.ncbi.nlm.nih.gov/geo/series"
-        self.debug = debug
+        self.logger = self._initialize_logger(debug)
+
+    @staticmethod
+    def _initialize_logger(debug: bool) -> logging.Logger:
+        """
+        Initializes and returns a logger.
+
+        Args:
+            debug (bool): Enables debug output if True.
+
+        Returns:
+            logging.Logger: Configured logger instance.
+        """
+        logger = logging.getLogger("GeoMetadataDownloader")
+        logger.setLevel(logging.DEBUG if debug else logging.INFO)
+        if not logger.hasHandlers():  # Prevent adding multiple handlers during testing
+            handler = logging.StreamHandler()
+            handler.setFormatter(logging.Formatter("[%(levelname)s] %(message)s"))
+            logger.addHandler(handler)
+        return logger
 
     def download_file(self, file_id: str) -> Optional[str]:
         """
@@ -42,54 +60,45 @@ class GeoMetadataDownloader(DataDownloader):
         Raises:
             ValueError: If the file ID is empty.
         """
-        # Validate file ID input
         if not file_id:
             raise ValueError("File ID cannot be empty.")
 
         # Construct the download URL and local file paths
-        stub = file_id[:-3] + 'nnn'  # Base series identifier in the URL path
+        stub = file_id[:-3] + 'nnn'
         url = f"{self.base_url}/{stub}/{file_id}/miniml/{file_id}_family.xml.tgz"
         output_path = os.path.join(self.output_dir, f"{file_id}_family.xml.tgz")
         extracted_path = os.path.join(self.output_dir, f"{file_id}_family.xml")
 
-        # Debug output for constructed paths
-        if self.debug:
-            print(f"[DEBUG] URL: {url}")
-            print(f"[DEBUG] Output Path: {output_path}")
-            print(f"[DEBUG] Extracted Path: {extracted_path}")
+        self.logger.debug(f"URL: {url}")
+        self.logger.debug(f"Output Path: {output_path}")
+        self.logger.debug(f"Extracted Path: {extracted_path}")
 
-        # Check if the file already exists to avoid redundant downloads
+        # Check if the file already exists
         if self.file_exists(extracted_path):
-            if self.debug:
-                print(f"[DEBUG] File already exists at {extracted_path}")
+            self.logger.info(f"File already exists: {extracted_path}")
             return extracted_path
 
-        # Download the file using the inherited method from DataDownloader
+        # Download the file
         downloaded_path = self.download_from_url(url, output_path)
-        if downloaded_path:
-            # Attempt to extract the downloaded .tar.gz file
-            try:
-                if self.debug:
-                    print(f"[DEBUG] Starting extraction of {downloaded_path}")
-                with tarfile.open(downloaded_path, 'r:gz') as tar:
-                    tar.extractall(path=self.output_dir)
+        if not downloaded_path:
+            self.logger.error(f"Failed to download file from {url}")
+            return None
 
-                if self.debug:
-                    print(f"[DEBUG] Extraction successful, removing archive {downloaded_path}")
-                os.remove(downloaded_path)  # Clean up the archive after extraction
+        # Extract the downloaded file
+        try:
+            self.logger.info(f"Extracting file: {downloaded_path}")
+            with tarfile.open(downloaded_path, 'r:gz') as tar:
+                tar.extractall(path=self.output_dir)
+            os.remove(downloaded_path)  # Remove archive after extraction
+            self.logger.info(f"Extraction complete: {extracted_path}")
 
-                # Confirm file extraction
-                if os.path.exists(extracted_path):
-                    return extracted_path
-                else:
-                    if self.debug:
-                        print(f"[DEBUG] Extracted file not found at {extracted_path}")
-                    return None
-            except (tarfile.TarError, OSError) as e:
-                if self.debug:
-                    print(f"[DEBUG] Failed to extract {downloaded_path}: {e}")
+            # Validate extracted file existence
+            if os.path.exists(extracted_path):
+                return extracted_path
+            else:
+                self.logger.error(f"Extracted file not found: {extracted_path}")
                 return None
-        else:
-            if self.debug:
-                print(f"[DEBUG] Download failed for URL: {url}")
+
+        except (tarfile.TarError, OSError) as e:
+            self.logger.error(f"Error during extraction: {e}")
             return None

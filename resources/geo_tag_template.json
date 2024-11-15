@@ -1,82 +1,23 @@
 {
-    "MINiML": {
-        "Series": {
-            "Identification": {
-                "SeriesID": "Series/iid",
-                "GEOAccession": "Series/Accession[@database='GEO']"
-            },
-            "Status": {
-                "Status": "Series/Status",
-                "SubmissionDate": "Series/Status/Submission-Date",
-                "LastUpdateDate": "Series/Status/Last-Update-Date",
-                "ReleaseDate": "Series/Status/Release-Date"
-            },
-            "StudyDetails": {
-                "Title": "Series/Title",
-                "PubMedID": "Series/Pubmed-ID",
-                "Summary": "Series/Summary",
-                "OverallDesign": "Series/Overall-Design",
-                "SeriesType": "Series/Type"
-            },
-            "PlatformDetails": {
-                "PlatformID": "Platform/iid",
-                "Organism": "Platform/Organism",
-                "Technology": "Platform/Technology"
-            },
-            "ContributorInfo": {
-                "Contributors": "Series/Contributor",
-                "PrimaryContributorEmail": "Series/Contributor[@iid='contrib1']/Email",
-                "PrimaryContributorOrganization": "Series/Contributor[@iid='contrib1']/Organization"
-            },
-            "DatabaseInfo": {
-                "DatabaseName": "Database/Name",
-                "DatabasePublicID": "Database/Public-ID",
-                "DatabaseOrganization": "Database/Organization",
-                "DatabaseWebLink": "Database/Web-Link",
-                "DatabaseEmail": "Database/Email"
-            }
-        },
-        "Sample": {
-            "SampleDetails": {
-                "SampleID": "Sample/iid",
-                "GEOAccession": "Sample/Accession[@database='GEO']",
-                "SampleTitle": "Sample/Title",
-                "SampleType": "Sample/Type",
-                "PlatformReference": "Sample/Platform-Ref/@ref",
-                "Organism": "Sample/Organism"
-            },
-            "Demographics": {
-                "Age": "Sample/Channel/Characteristics[@tag='age']",
-                "Gender": "Sample/Channel/Characteristics[@tag='gender']",
-                "Race": "Sample/Channel/Characteristics[@tag='race']",
-                "Smoking": "Sample/Channel/Characteristics[@tag='smoking']",
-                "AlcoholUse": "Sample/Channel/Characteristics[@tag='alcohol use']"
-            },
-            "ClinicalData": {
-                "ClinicalStage": "Sample/Channel/Characteristics[@tag='clinical stage']",
-                "HPVIntegration": "Sample/Channel/Characteristics[@tag='hpv integration']",
-                "HPVType": "Sample/Channel/Characteristics[@tag='hpv type']",
-                "TStage": "Sample/Channel/Characteristics[@tag='t-stage']",
-                "NStage": "Sample/Channel/Characteristics[@tag='n-stage']",
-                "AnatomicTNMStage": "Sample/Channel/Characteristics[@tag='anatomic tnm stage']",
-                "TimeToDeathOrFollowUp": "Sample/Channel/Characteristics[@tag='time to death or follow-up if alive (months)']",
-                "DiseaseStatusLastFollowup": "Sample/Channel/Characteristics[@tag='disease status at last clinical followup']",
-                "PrimarySurgicalTherapy": "Sample/Channel/Characteristics[@tag='primary surgical therapy']",
-                "PrimaryChemotherapy": "Sample/Channel/Characteristics[@tag='primary chemotherapy']",
-                "PrimaryRadiationTherapy": "Sample/Channel/Characteristics[@tag='primary radiation therapy']"
-            },
-            "ExperimentalDetails": {
-                "Source": "Sample/Channel/Source",
-                "Characteristics": "Sample/Channel/Characteristics",
-                "Protocol": "Sample/Channel/Extract-Protocol",
-                "DataProcessing": "Sample/Data-Processing",
-                "SupplementaryFiles": "Sample/Supplementary-Data",
-                "LibraryStrategy": "Sample/Library-Strategy",
-                "LibrarySource": "Sample/Library-Source",
-                "LibrarySelection": "Sample/Library-Selection",
-                "Antibody": "Sample/Channel/Characteristics[@tag='antibody']",
-                "InstrumentModel": "Sample/Instrument-Model/Predefined"
-            }
-        }
+    "Series": {
+        "SeriesID": "geo:Accession",
+        "Title": "geo:Title",
+        "SubmissionDate": "geo:Status/geo:Submission-Date",
+        "LastUpdateDate": "geo:Status/geo:Last-Update-Date",
+        "PubMedID": "geo:Pubmed-ID",
+        "Summary": "geo:Summary",
+        "OverallDesign": "geo:Overall-Design",
+        "Relations": "geo:Relation",
+        "SupplementaryData": "geo:Supplementary-Data"
+    },
+    "Sample": {
+        "SampleID": "geo:Accession",
+        "Title": "geo:Title",
+        "SubmissionDate": "geo:Status/geo:Submission-Date",
+        "LastUpdateDate": "geo:Status/geo:Last-Update-Date",
+        "Organism": "geo:Channel/geo:Organism",
+        "Characteristics": "geo:Channel/geo:Characteristics",
+        "Relations": "geo:Relation",
+        "SupplementaryData": "geo:Supplementary-Data"
     }
 }
