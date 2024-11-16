@@ -17,3 +17,6 @@ requests
 alembic
 retry
 lxml
+pydantic
+matplotlib
+seaborn
