@@ -1,148 +1,192 @@
+# File: scripts/geo_metadata_pipeline.py
+from pipeline.geo_pipeline.geo_metadata_downloader import GeoMetadataDownloader  # Downloader class
+from pipeline.geo_pipeline.geo_metadata_extractor import GeoMetadataExtractor  # Extractor class
+from utils.parallel_processing import ParallelProcessor  # Base class for parallel processing
+
+
 import os
-import re
-import json
 import logging
-from retry import retry
-import traceback
-from utils.connection_checker import DatabaseConnectionChecker
-from utils.validate_tags import validate_tags
-from pipeline.geo_pipeline.geo_metadata_downloader import GeoMetadataDownloader
-from pipeline.geo_pipeline.geo_metadata_extractor import GeoMetadataExtractor
-from pipeline.geo_pipeline.geo_metadata_uploader import GeoMetadataUploader
-from utils.parallel_processing import GEODataProcessor
-from config.db_config import get_postgres_engine
-from db.schema.metadata_schema import DatasetSeriesMetadata, DatasetSampleMetadata
-from utils.xml_tree_parser import parse_and_populate_xml_tree
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+# Define log file relative to the current script's directory
+LOG_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "../logs"))
+LOG_FILE = os.path.join(LOG_DIR, "geo_metadata_pipeline.log")
+
+# Ensure the logs directory exists
+if not os.path.exists(LOG_DIR):
+    os.makedirs(LOG_DIR)
+
+# Set up logging configuration
+logging.basicConfig(
+    filename=LOG_FILE,
+    level=logging.DEBUG,  # Set the logging level to DEBUG or INFO as needed
+    format="%(asctime)s - %(levelname)s - %(message)s",
+)
+
+# Test log entry to verify setup
+logging.info("Logging setup complete. Starting pipeline.")
 
 
-# Define the project root directory based on the current file's known structure
-ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+# ---------------- Configuration ----------------
+# Get the base directory of the script for consistent paths
+BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 
-# Define paths for resources and configurations, relative to the project root
-GEO_IDS_FILE = os.path.join(ROOT_DIR, "resources/geo_ids.txt")
-TAGS_TEMPLATE_FILE = os.path.join(ROOT_DIR, "resources/geo_tag_template.json")
-OUTPUT_DIR = os.path.join(ROOT_DIR, "resources/data/metadata/geo_metadata")
+# Paths for the pipeline
+OUTPUT_DIR = os.path.join(BASE_DIR, "../resources/data/metadata/geo_metadata")  # Directory for downloaded data
+GEO_IDS_FILE = os.path.join(BASE_DIR, "../resources/geo_ids.txt")  # File containing GEO IDs to process
+EXTRACTION_TEMPLATE = os.path.join(BASE_DIR, "../resources/geo_tag_template.json")  # Template for metadata extraction
 
-GEO_ID_PATTERN = re.compile(r"^GSE\d{3,}$")
 
-def initialize_database() -> None:
-    try:
-        engine = get_postgres_engine()
-        DatasetSeriesMetadata.metadata.create_all(engine)
-        DatasetSampleMetadata.metadata.create_all(engine)
-        logger.info("Database tables initialized successfully.")
-    except Exception as e:
-        logger.error(f"Database initialization failed: {e}")
-        raise RuntimeError("Failed to initialize database tables") from e
+# ---------------- Initialization ----------------
+# Ensure required directories exist
+os.makedirs(os.path.dirname(OUTPUT_DIR), exist_ok=True)  # Create output directory if it doesn't exist
+os.makedirs(os.path.dirname(LOG_FILE), exist_ok=True)  # Create log directory if it doesn't exist
 
-def load_geo_ids(file_path: str) -> list:
-    try:
-        with open(file_path, 'r') as f:
-            geo_ids = [line.strip() for line in f if line.strip()]
+# Configure logging to output to a file
+logging.basicConfig(
+    filename=LOG_FILE,
+    level=logging.INFO,  # Use DEBUG for more detailed logs
+    format="%(asctime)s - %(levelname)s - %(message)s",
+    filemode="w"  # Overwrites the log file; use 'a' to append to it
+)
+logger = logging.getLogger("geo_metadata_pipeline")  # Create a logger for the pipeline
 
-        invalid_ids = [geo_id for geo_id in geo_ids if not GEO_ID_PATTERN.match(geo_id)]
-        if invalid_ids:
-            raise ValueError(f"Invalid GEO ID format for IDs: {invalid_ids}")
 
-        logger.info(f"Loaded {len(geo_ids)} GEO IDs from {file_path}.")
-        return geo_ids
-    except (FileNotFoundError, ValueError) as e:
-        logger.error(f"Error loading GEO IDs: {e}")
-        raise
+# ---------------- GEO Metadata Pipeline ----------------
+class GeoMetadataPipeline(ParallelProcessor):
+    """
+    Pipeline for downloading and extracting metadata from GEO datasets.
 
-def load_and_validate_fields(file_path: str) -> dict:
-    try:
-        with open(file_path, 'r') as f:
-            fields_to_extract = json.load(f)
+    This class integrates downloading and metadata extraction functionalities
+    to process GEO datasets in parallel, ensuring both tasks happen sequentially per resource.
+    """
 
-        required_keys = {"Sample", "Series"}
-        missing_keys = required_keys - fields_to_extract.keys()
-        if missing_keys:
-            raise ValueError(f"Missing required tags in extraction fields: {missing_keys}")
+    def __init__(self, geo_ids: list):
+        """
+        Initializes the GeoMetadataPipeline with GEO IDs.
 
-        logger.info(f"Loaded fields from {file_path}.")
-        return fields_to_extract
-    except (FileNotFoundError, json.JSONDecodeError, ValueError) as e:
-        logger.error(f"Error loading fields from JSON: {e}")
-        raise
+        Args:
+            geo_ids (list): List of GEO series IDs to process.
+        """
+        # Initialize the base class for parallel processing
+        super().__init__(resource_ids=geo_ids, output_dir=OUTPUT_DIR)
 
-@retry(tries=3, delay=2)
-def safe_download_file(downloader: GeoMetadataDownloader, geo_id: str) -> str:
-    try:
-        file_path = downloader.download_file(geo_id)
-        if not file_path:
-            logger.error(f"Failed to download GEO ID: {geo_id}")
-            return None
-        return file_path
-    except Exception as e:
-        logger.error(f"Download failed for GEO ID {geo_id}: {e}")
-        logger.debug(traceback.format_exc())
-        return None
+        # Initialize the downloader instance
+        self.downloader = GeoMetadataDownloader(output_dir=OUTPUT_DIR, debug=True)
 
-def process_geo_id_wrapper(geo_id: str, downloader, extractor, uploader, fields_to_extract):
-    """Wrapper function for processing GEO IDs in parallel."""
-    process_geo_id(geo_id, downloader, extractor, uploader, fields_to_extract)
+        # Store the template path for the extractor
+        self.extractor_template = EXTRACTION_TEMPLATE
 
-def process_geo_id(geo_id: str, downloader: GeoMetadataDownloader, extractor: GeoMetadataExtractor,
-                   uploader: GeoMetadataUploader, fields_to_extract: dict) -> None:
-    logger.info(f"Processing GEO ID: {geo_id}")
-    try:
-        file_path = safe_download_file(downloader, geo_id)
-        if not file_path:
-            return
+    def download_resource(self, geo_id: str) -> str:
+        """
+        Downloads the GEO dataset for a given GEO ID.
 
-        xml_tree = parse_and_populate_xml_tree(file_path, fields_to_extract)
-        if not validate_tags(xml_tree, fields_to_extract):
-            logger.error(f"Validation failed for GEO ID {geo_id}. Skipping.")
-            return
+        Args:
+            geo_id (str): GEO series ID to download.
 
-        metadata = extractor.extract_metadata(file_path)
-        if metadata is None:
-            logger.error(f"Metadata extraction failed for GEO ID {geo_id}.")
-            return
+        Returns:
+            str: Path to the extracted XML file.
 
-        uploader.upload_metadata(metadata)
-        logger.info(f"Metadata successfully uploaded for GEO ID: {geo_id}")
+        Raises:
+            RuntimeError: If the download fails or the extracted file is not found.
+        """
+        try:
+            # Log the start of the download
+            logger.info(f"Starting download for GEO ID: {geo_id}")
 
-    except Exception as e:
-        logger.error(f"Error processing GEO ID {geo_id}: {e}")
-        logger.debug(traceback.format_exc())
+            # Attempt to download and extract the file
+            extracted_path = self.downloader.download_file(geo_id)
 
-def main():
+            # Ensure the extracted file exists
+            if not extracted_path or not os.path.exists(extracted_path):
+                raise RuntimeError(f"Download failed for GEO ID: {geo_id}")
 
-    uploader = None  # Initialize to avoid referencing before assignment
+            # Log success and return the path
+            logger.info(f"Download and extraction successful for GEO ID: {geo_id}")
+            return extracted_path
+        except Exception as e:
+            # Log and raise any errors encountered during downloading
+            logger.error(f"Error during download for GEO ID {geo_id}: {e}")
+            raise
 
-    try:
-        initialize_database()
-        geo_ids = load_geo_ids(GEO_IDS_FILE)
-        fields_to_extract = load_and_validate_fields(TAGS_TEMPLATE_FILE)
+    def process_resource(self, file_path: str) -> None:
+        """
+        Processes the downloaded GEO XML file.
 
-        downloader = GeoMetadataDownloader(OUTPUT_DIR)
-        extractor = GeoMetadataExtractor(fields_to_extract, debug=True)
+        Args:
+            file_path (str): Path to the extracted XML file.
 
-        connection_checker = DatabaseConnectionChecker()
-        if not connection_checker.check_postgresql_connection():
-            logger.error("PostgreSQL connection could not be established. Exiting.")
-            return
+        Returns:
+            None
+        """
+        try:
+            # Log the start of metadata extraction
+            logger.info(f"Starting metadata extraction for file: {file_path}")
 
-        uploader = GeoMetadataUploader(engine=get_postgres_engine(), debug=True)
+            # Create an extractor instance and parse the file
+            extractor = GeoMetadataExtractor(
+                file_path=file_path,
+                template_path=self.extractor_template,
+                debug_mode=True,
+                verbose_mode=False
+            )
+            extractor.parse()
 
-        geo_processor = GEODataProcessor(geo_ids, OUTPUT_DIR, extractor)
-        geo_processor.execute(lambda geo_id: process_geo_id_wrapper(geo_id, downloader, extractor, uploader, fields_to_extract))
+            # Log success after processing
+            logger.info(f"Successfully processed metadata for file: {file_path}")
+        except Exception as e:
+            # Log and raise any errors encountered during extraction
+            logger.error(f"Error during metadata extraction for file {file_path}: {e}")
+            raise
 
-    except Exception as e:
-        logger.critical(f"Pipeline encountered a critical error: {e}")
-        logger.debug(traceback.format_exc())
+    def download_and_process(self, geo_id: str) -> None:
+        """
+        Combines downloading and processing for a GEO ID.
 
-    finally:
-        if uploader:
-            uploader.disconnect()
-        logger.info("Pipeline completed. All resources closed.")
+        Args:
+            geo_id (str): GEO series ID.
 
+        Returns:
+            None
+        """
+        try:
+            # Download the resource and get its path
+            file_path = self.download_resource(geo_id)
+
+            # Process the downloaded file
+            self.process_resource(file_path)
+        except Exception as e:
+            # Log errors encountered during the combined operation
+            logger.error(f"Error in pipeline for GEO ID {geo_id}: {e}")
+            raise
+
+
+# ---------------- Execution ----------------
 if __name__ == "__main__":
-    main()
+    try:
+        # Ensure the GEO IDs file exists
+        if not os.path.exists(GEO_IDS_FILE):
+            raise FileNotFoundError(f"GEO IDs file not found: {GEO_IDS_FILE}")
 
+        # Read GEO series IDs from the input file
+        with open(GEO_IDS_FILE, "r") as f:
+            geo_ids = [line.strip() for line in f if line.strip()]
+        if not geo_ids:
+            raise ValueError("No GEO IDs found in the file.")
 
+        # Log the number of GEO IDs to process
+        logger.info(f"Processing {len(geo_ids)} GEO IDs.")
+    except Exception as e:
+        # Log critical errors related to reading the GEO IDs file
+        logger.critical(f"Failed to read GEO IDs: {e}")
+        exit(1)
+
+    try:
+        # Initialize the pipeline with GEO IDs
+        pipeline = GeoMetadataPipeline(geo_ids=geo_ids)
+
+        # Execute the pipeline with parallel processing
+        pipeline.execute(pipeline.download_and_process)
+    except Exception as e:
+        # Log critical errors related to the pipeline execution
+        logger.critical(f"Pipeline execution failed: {e}")
+        exit(1)
