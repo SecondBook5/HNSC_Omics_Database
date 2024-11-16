@@ -1,4 +1,5 @@
 # File: pipeline/geo_pipeline/geo_metadata_extractor.py
+import os  # For file path validation
 import json
 from lxml import etree
 from typing import Dict, Optional, List
@@ -67,7 +68,6 @@ class SampleMetadata(BaseModel):
     Relations: List[dict] = Field(default_factory=list)
     SupplementaryData: Optional[str] = None
 
-
 # ---------------- Metadata Extractor Class ----------------
 class GeoMetadataExtractor:
     """
@@ -93,6 +93,11 @@ class GeoMetadataExtractor:
             debug_mode: Enables detailed debug logging.
             verbose_mode: Enables verbose terminal output.
         """
+        # Validate file paths
+        if not os.path.exists(file_path):
+            raise FileNotFoundError(f"XML file not found: {file_path}")
+        if not os.path.exists(template_path):
+            raise FileNotFoundError(f"Template file not found: {template_path}")
         # Save file paths and flags
         self.file_path = file_path
         self.template_path = template_path
@@ -155,7 +160,15 @@ class GeoMetadataExtractor:
             # Parse the date if provided
             return datetime.strptime(date_str, "%Y-%m-%d").date().isoformat() if date_str else None
         except ValueError:
-            return None  # Return None if the date is invalid
+            return None
+
+    def _validate_xml(self):
+        """Checks if the XML is well-formed."""
+        try:
+            etree.parse(self.file_path)
+        except etree.XMLSyntaxError as e:
+            self.logger.error(f"Invalid XML structure: {e}")
+            raise RuntimeError("Invalid XML structure.") from e
 
     def _extract_fields(self, element: etree._Element, field_paths: Dict[str, str], ns: Dict[str, str]) -> Dict[str, Optional[str]]:
         """
@@ -269,7 +282,7 @@ class GeoMetadataExtractor:
         Processes Series and Sample elements from the XML file, validating and logging data.
         """
         try:
-            # Start the timer and initialize counters
+            self._validate_xml()  # Validate the XML file structure
             start_time = time.time()
             ns = {'geo': 'http://www.ncbi.nlm.nih.gov/geo/info/MINiML'}
             series_count = 0
