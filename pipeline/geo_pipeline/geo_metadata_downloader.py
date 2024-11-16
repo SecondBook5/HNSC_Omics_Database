@@ -62,6 +62,7 @@ class GeoMetadataDownloader(DataDownloader):
         Args:
             file_ids (List[str]): List of GEO series IDs to download and extract.
         """
+        # Iterate over each GEO series ID in the provided list
         for file_id in file_ids:
             try:
                 # Log the start of processing for the current GEO series
@@ -92,6 +93,7 @@ class GeoMetadataDownloader(DataDownloader):
         Raises:
             ValueError: If the file ID is empty.
         """
+        # Raise a ValueError if the file ID is empty
         if not file_id:
             raise ValueError("File ID cannot be empty.")
 
@@ -130,10 +132,13 @@ class GeoMetadataDownloader(DataDownloader):
                 return None
 
         except ValueError as ve:
+            # Log any value errors encountered
             self.logger.error(f"Value Error: {ve}")
         except requests.RequestException as re:
+            # Log any request-specific exceptions
             self.logger.error(f"Request Exception while downloading: {re}")
         except Exception as e:
+            # Log any other unexpected exceptions
             self.logger.error(f"Unexpected error during download or extraction: {e}")
         return None
 
@@ -149,26 +154,32 @@ class GeoMetadataDownloader(DataDownloader):
             Optional[str]: Path to the downloaded file, or None if the download failed.
         """
         try:
-            # Start downloading the file from the URL
+            # Log the start of the download
             self.logger.info(f"Downloading file from {url}")
+            # Make an HTTP GET request to fetch the file
             response = requests.get(url, timeout=30)
-            response.raise_for_status()  # Raise HTTPError for bad responses
+            # Raise an exception for HTTP errors
+            response.raise_for_status()
 
             # Save the downloaded content to the specified output path
             with open(output_path, 'wb') as f:
                 f.write(response.content)
 
-            # Log the successful download and return the path
+            # Log success and return the output path
             self.logger.info(f"Download complete: {output_path}")
             return output_path
 
         except requests.Timeout:
+            # Log a timeout error if the request times out
             self.logger.error(f"Timeout while trying to download {url}")
         except requests.HTTPError as http_err:
+            # Log an HTTP error if the response status code indicates failure
             self.logger.error(f"HTTP error occurred: {http_err}")
         except requests.RequestException as req_err:
+            # Log any other request-related errors
             self.logger.error(f"Request error: {req_err}")
         except Exception as e:
+            # Log unexpected errors
             self.logger.error(f"Unexpected error while downloading file: {e}")
         return None
 
@@ -198,15 +209,18 @@ class GeoMetadataDownloader(DataDownloader):
             if os.path.exists(expected_path):
                 return expected_path
             else:
-                # Log error if the extracted file is missing
+                # Log an error if the extracted file is missing
                 self.logger.error(f"Extracted file not found: {expected_path}")
                 return None
 
         except tarfile.TarError as tar_err:
+            # Log tar file errors
             self.logger.error(f"Tar file error: {tar_err}")
         except OSError as os_err:
+            # Log OS errors
             self.logger.error(f"OS error during extraction: {os_err}")
         except Exception as e:
+            # Log unexpected errors during extraction
             self.logger.error(f"Unexpected error during extraction: {e}")
         return None
 
