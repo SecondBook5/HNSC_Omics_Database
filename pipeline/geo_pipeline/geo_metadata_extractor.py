@@ -31,7 +31,7 @@ class SeriesMetadata(BaseModel):
         PubMedID: The PubMed ID associated with the series, if available.
         Summary: A summary of the series' objectives and findings.
         OverallDesign: An overview of the experimental design.
-        Relations: A list of relations to other datasets or resources.
+        RelatedDatasets: A list of related datasets.
         SupplementaryData: Supplementary data or files linked to the series.
     """
     SeriesID: str
@@ -41,7 +41,7 @@ class SeriesMetadata(BaseModel):
     PubMedID: Optional[str] = None
     Summary: Optional[str] = None
     OverallDesign: Optional[str] = None
-    Relations: List[dict] = Field(default_factory=list)
+    RelatedDatasets: List[dict] = Field(default_factory=list)  # New field
     SupplementaryData: Optional[str] = None
 
 
@@ -53,20 +53,41 @@ class SampleMetadata(BaseModel):
         SampleID: The unique identifier for the sample.
         Title: The title of the dataset sample.
         SubmissionDate: The date the sample was submitted.
+        ReleaseDate: The release date for the sample.
         LastUpdateDate: The last update date for the sample.
+        Source: The source of the biological material.
         Organism: The organism associated with the sample.
-        Characteristics: A dictionary containing the sample's characteristics.
-        Relations: A list of relations to other datasets or resources.
+        Molecule: The molecule studied (e.g., RNA, DNA).
+        Characteristics: A dictionary of additional characteristics of the sample.
+        ExtractProtocol: Protocol used for extraction.
+        DataProcessing: Description of data processing methods.
+        PlatformRef: The platform used for sequencing or analysis.
+        LibraryStrategy: Library preparation strategy (e.g., RNA-Seq).
+        LibrarySource: Source of the library (e.g., transcriptomic).
+        LibrarySelection: Method for library selection (e.g., poly-A enrichment).
+        InstrumentModel: Model of the sequencing instrument.
+        RelatedDatasets: A list of related datasets.
         SupplementaryData: Supplementary data or files linked to the sample.
     """
     SampleID: str
     Title: Optional[str] = None
     SubmissionDate: Optional[str] = None
+    ReleaseDate: Optional[str] = None  # New field
     LastUpdateDate: Optional[str] = None
+    Source: Optional[str] = None  # New field
     Organism: Optional[str] = None
-    Characteristics: dict = Field(default_factory=dict)
-    Relations: List[dict] = Field(default_factory=list)
+    Molecule: Optional[str] = None  # New field
+    Characteristics: dict = Field(default_factory=dict)  # Ensuring this is included
+    ExtractProtocol: Optional[str] = None  # New field
+    DataProcessing: Optional[str] = None  # New field
+    PlatformRef: Optional[str] = None  # New field
+    LibraryStrategy: Optional[str] = None  # New field
+    LibrarySource: Optional[str] = None  # New field
+    LibrarySelection: Optional[str] = None  # New field
+    InstrumentModel: Optional[str] = None  # New field
+    RelatedDatasets: List[dict] = Field(default_factory=list)  # New field
     SupplementaryData: Optional[str] = None
+
 
 # ---------------- Metadata Extractor Class ----------------
 class GeoMetadataExtractor:
@@ -170,7 +191,8 @@ class GeoMetadataExtractor:
             self.logger.error(f"Invalid XML structure: {e}")
             raise RuntimeError("Invalid XML structure.") from e
 
-    def _extract_fields(self, element: etree._Element, field_paths: Dict[str, str], ns: Dict[str, str]) -> Dict[str, Optional[str]]:
+    def _extract_fields(self, element: etree._Element, field_paths: Dict[str, str], ns: Dict[str, str]) -> Dict[
+        str, Optional[str]]:
         """
         Extracts fields from an XML element based on field paths.
 
@@ -185,8 +207,11 @@ class GeoMetadataExtractor:
         data = {}  # Initialize dictionary to store extracted data
         for field_name, path in field_paths.items():
             try:
-                # Handle multi-element fields such as Relations and Supplementary Data
-                if path.endswith("Relation") or path.endswith("Supplementary-Data"):
+                if "@" in path:  # Handle attribute-based fields
+                    # Use XPath to extract attribute value
+                    attribute_value = element.xpath(path, namespaces=ns)
+                    data[field_name] = attribute_value[0] if attribute_value else None
+                elif path.endswith("Relation") or path.endswith("Supplementary-Data"):  # Multi-element fields
                     if path.endswith("Relation"):
                         # Extract relations data
                         relations = [
@@ -201,20 +226,19 @@ class GeoMetadataExtractor:
                             supp_data.text.strip() for supp_data in element.findall(path, ns) if supp_data.text
                         ])
                         data[field_name] = supplementary_data
-                elif field_name == "Characteristics":
-                    # Handle Characteristics as a dictionary
+                elif field_name == "Characteristics":  # Handle Characteristics as a dictionary
                     characteristics = {
                         char.attrib.get("tag", "Unknown"): char.text.strip() if char.text else "NA"
                         for char in element.findall(path, ns)
                     }
                     data[field_name] = characteristics
-                else:
-                    # Extract single-value fields
+                else:  # Handle single-value fields
                     sub_elem = element.find(path, ns)
                     data[field_name] = sub_elem.text.strip() if sub_elem is not None and sub_elem.text else None
             except Exception as e:
                 # Log warning for extraction errors
                 self.logger.warning(f"Error extracting field {field_name}: {e}")
+                data[field_name] = None  # Ensure field is set to None on error
         return data
 
     def _process_series_data(self, series_elem: etree._Element, ns: Dict[str, str]) -> Optional[Dict[str, Optional[str]]]:

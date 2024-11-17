@@ -7,17 +7,27 @@
         "PubMedID": "geo:Pubmed-ID",
         "Summary": "geo:Summary",
         "OverallDesign": "geo:Overall-Design",
-        "Relations": "geo:Relation",
+        "RelatedDatasets": "geo:Relation",
         "SupplementaryData": "geo:Supplementary-Data"
     },
     "Sample": {
         "SampleID": "geo:Accession",
         "Title": "geo:Title",
         "SubmissionDate": "geo:Status/geo:Submission-Date",
+        "ReleaseDate": "geo:Status/geo:Release-Date",
         "LastUpdateDate": "geo:Status/geo:Last-Update-Date",
+        "Source": "geo:Channel/geo:Source",
         "Organism": "geo:Channel/geo:Organism",
+        "Molecule": "geo:Channel/geo:Molecule",
         "Characteristics": "geo:Channel/geo:Characteristics",
-        "Relations": "geo:Relation",
+        "ExtractProtocol": "geo:Channel/geo:Extract-Protocol",
+        "DataProcessing": "geo:Data-Processing",
+        "PlatformRef": "geo:Platform-Ref/@ref",
+        "LibraryStrategy": "geo:Library-Strategy",
+        "LibrarySource": "geo:Library-Source",
+        "LibrarySelection": "geo:Library-Selection",
+        "InstrumentModel": "geo:Instrument-Model/geo:Predefined",
+        "RelatedDatasets": "geo:Relation",
         "SupplementaryData": "geo:Supplementary-Data"
     }
 }
