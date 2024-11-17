@@ -28,6 +28,12 @@
         "LibrarySelection": "geo:Library-Selection",
         "InstrumentModel": "geo:Instrument-Model/geo:Predefined",
         "RelatedDatasets": "geo:Relation",
-        "SupplementaryData": "geo:Supplementary-Data"
+        "SupplementaryData": "geo:Supplementary-Data",
+        "HybridizationProtocol": "geo:Hybridization-Protocol",
+        "ScanProtocol": "geo:Scan-Protocol",
+        "Label": "geo:Channel/geo:Label",
+        "TreatmentProtocol": "geo:Channel/geo:Treatment-Protocol",
+        "GrowthProtocol": "geo:Channel/geo:Growth-Protocol",
+        "LabelProtocol": "geo:Channel/geo:Label-Protocol"
     }
 }

@@ -87,6 +87,12 @@ class SampleMetadata(BaseModel):
     InstrumentModel: Optional[str] = None  # New field
     RelatedDatasets: List[dict] = Field(default_factory=list)  # New field
     SupplementaryData: Optional[str] = None
+    HybridizationProtocol: Optional[str] = None  # New optional field
+    ScanProtocol: Optional[str] = None  # New optional field
+    Label: Optional[str] = None  # New optional field
+    TreatmentProtocol: Optional[str] = None  # New optional field
+    GrowthProtocol: Optional[str] = None  # New optional field
+    LabelProtocol: Optional[str] = None  # New optional field
 
 
 # ---------------- Metadata Extractor Class ----------------

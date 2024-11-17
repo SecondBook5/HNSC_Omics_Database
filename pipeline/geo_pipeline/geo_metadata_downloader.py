@@ -18,25 +18,26 @@ class GeoMetadataDownloader(DataDownloader):
         logger (logging.Logger): Logger instance for debug and info output.
     """
 
-    def __init__(self, output_dir: str, debug: bool = False) -> None:
+    def __init__(self, output_dir: str, debug: bool = False, logger: Optional[logging.Logger] = None) -> None:
         """
         Initializes GeoMetadataDownloader with output directory and optional debug flag.
 
         Args:
             output_dir (str): Directory to save downloaded files.
             debug (bool): Enables debug output if True.
+            logger (Optional[logging.Logger]): Optional external logger to use.
         """
         # Initialize the parent class with the output directory
         super().__init__(output_dir)
         # Base URL for constructing GEO file download links
         self.base_url: str = "https://ftp.ncbi.nlm.nih.gov/geo/series"
-        # Initialize a logger for logging download events and errors
-        self.logger: logging.Logger = self._initialize_logger(debug)
+        # Use the provided logger or set up a default one
+        self.logger: logging.Logger = logger or self._initialize_default_logger(debug)
 
     @staticmethod
-    def _initialize_logger(debug: bool) -> logging.Logger:
+    def _initialize_default_logger(debug: bool) -> logging.Logger:
         """
-        Initializes and returns a logger.
+        Initializes and returns a default logger if none is provided.
 
         Args:
             debug (bool): Enables debug output if True.
@@ -48,8 +49,8 @@ class GeoMetadataDownloader(DataDownloader):
         logger = logging.getLogger("GeoMetadataDownloader")
         # Set the logging level based on the debug flag
         logger.setLevel(logging.DEBUG if debug else logging.INFO)
-        # Add a stream handler for logging to console
-        if not logger.hasHandlers():  # Avoid duplicate handlers during testing
+        # Add a stream handler for logging to console (only if no handlers exist)
+        if not logger.hasHandlers():
             handler = logging.StreamHandler()
             handler.setFormatter(logging.Formatter("[%(levelname)s] %(message)s"))
             logger.addHandler(handler)
