@@ -299,58 +299,76 @@ class GeoMetadataExtractor:
             self.logger.error(f"Error processing Sample element: {e}")
             return None
 
-    def parse(self):
+    def parse(self) -> Dict[str, List[Dict]]:
         """
-        Parses the GEO MINiML file and logs results.
+        Parses the GEO MINiML file and extracts metadata.
 
-        Processes Series and Sample elements from the XML file, validating and logging data.
+        Processes Series and Sample elements from the XML file, validates them,
+        and stores the results for external access or debugging.
+
+        Returns:
+            dict: A dictionary containing lists of Series and Sample metadata.
         """
+        extracted_metadata = {"Series": [], "Samples": []}  # Store metadata
+        series_count = 0  # Counter for Series elements
+        sample_count = 0  # Counter for Sample elements
+
         try:
-            self._validate_xml()  # Validate the XML file structure
+            self._validate_xml()  # Validate XML structure
             start_time = time.time()
             ns = {'geo': 'http://www.ncbi.nlm.nih.gov/geo/info/MINiML'}
-            series_count = 0
-            sample_count = 0
 
-            # Log and parse Series elements
+            # Process Series elements
             self.logger.info("Parsing Series data...")
-            context = etree.iterparse(self.file_path, events=("start", "end"),
-                                      tag="{http://www.ncbi.nlm.nih.gov/geo/info/MINiML}Series")
+            context = etree.iterparse(
+                self.file_path, events=("start", "end"), tag="{http://www.ncbi.nlm.nih.gov/geo/info/MINiML}Series"
+            )
             for event, elem in context:
                 if event == "end":
                     series_data = self._process_series_data(elem, ns)
                     if series_data:
-                        self.logger.debug(f"Extracted Series Data: {series_data}")
+                        extracted_metadata["Series"].append(series_data)  # Store Series metadata
+                        series_count += 1  # Increment counter
+                        self.logger.debug(f"Extracted Series: {series_data}")
                         if self.verbose_mode:
                             print(json.dumps(series_data, indent=2))
-                        series_count += 1
-                    elem.clear()  # Clear element to free memory
+                    elem.clear()
 
-            # Log and parse Sample elements
+            # Process Sample elements
             self.logger.info("Parsing Sample data...")
-            context = etree.iterparse(self.file_path, events=("start", "end"),
-                                      tag="{http://www.ncbi.nlm.nih.gov/geo/info/MINiML}Sample")
+            context = etree.iterparse(
+                self.file_path, events=("start", "end"), tag="{http://www.ncbi.nlm.nih.gov/geo/info/MINiML}Sample"
+            )
             for event, elem in context:
                 if event == "end":
                     sample_data = self._process_sample_data(elem, ns)
                     if sample_data:
-                        self.logger.debug(f"Extracted Sample Data: {sample_data}")
+                        extracted_metadata["Samples"].append(sample_data)  # Store Sample metadata
+                        sample_count += 1  # Increment counter
+                        self.logger.debug(f"Extracted Sample: {sample_data}")
                         if self.verbose_mode:
                             print(json.dumps(sample_data, indent=2))
-                        sample_count += 1
-                    elem.clear()  # Clear element to free memory
+                    elem.clear()
 
-            # Calculate elapsed time and log summary
+            # Log completion details
             elapsed_time = time.time() - start_time
-            self.logger.info(f"Parsing completed: {series_count} series and {sample_count} samples parsed.")
+            self.logger.info(f"Parsing completed. Parsed {series_count} Series and {sample_count} Samples.")
             self.logger.info(f"Time elapsed: {elapsed_time:.2f} seconds")
             if self.verbose_mode:
-                print(f"Parsing completed: {series_count} series and {sample_count} samples parsed.")
+                print(f"Parsing completed: {series_count} Series and {sample_count} Samples parsed.")
                 print(f"Time elapsed: {elapsed_time:.2f} seconds")
+
+            # Optionally write metadata to a file (useful for debugging)
+            output_file = self.file_path.replace("_family.xml", "_metadata.json")
+            with open(output_file, 'w') as f:
+                json.dump(extracted_metadata, f, indent=2)
+                self.logger.info(f"Metadata saved to {output_file}")
+
         except Exception as e:
-            # Handle fatal parsing errors
             self.logger.critical(f"Fatal error during parsing: {e}")
             raise
+
+        return extracted_metadata  # Return metadata for external use
 
 
 # ---------------- Execution ----------------
