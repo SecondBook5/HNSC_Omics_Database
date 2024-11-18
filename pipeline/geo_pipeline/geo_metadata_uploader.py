@@ -1,13 +1,12 @@
-# File: pipeline/geo_pipeline/geo_metadata_uploader.py
-
 # Import the base class for database uploaders to extend with custom functionality
 from pipeline.abstract_etl.database_uploader import DatabaseUploader
 # Import necessary typing for specifying data types in function arguments and return values
 from typing import Dict, Union
 # Import psycopg2 components for SQL commands and database error handling
-from psycopg2 import sql, OperationalError, DatabaseError
+from psycopg2 import sql, OperationalError, DatabaseError, IntegrityError
 # Import SQLAlchemy Engine for flexible database connection handling
 from sqlalchemy.engine import Engine
+import logging
 
 
 class GeoMetadataUploader(DatabaseUploader):
@@ -37,6 +36,9 @@ class GeoMetadataUploader(DatabaseUploader):
         # Initialize connection and cursor as None for defensive checks
         self.connection = None
         self.cursor = None
+        # Set up logger
+        self.logger = logging.getLogger(__name__)
+        self.logger.setLevel(logging.DEBUG if self.debug else logging.INFO)
         # Establish the database connection upon instantiation
         self._connect()
 
@@ -58,12 +60,38 @@ class GeoMetadataUploader(DatabaseUploader):
 
             # Log successful connection if debug mode is enabled
             if self.debug:
-                print("[DEBUG] PostgreSQL connection established using SQLAlchemy Engine.")
+                self.logger.debug("PostgreSQL connection established using SQLAlchemy Engine.")
 
             return True  # Indicate successful connection setup
         except OperationalError as e:
-            # Raise a ConnectionError if the connection setup fails
+            # Log and raise a ConnectionError if the connection setup fails
+            self.logger.error(f"Failed to establish connection to PostgreSQL: {e}")
             raise ConnectionError(f"Failed to establish connection to PostgreSQL: {e}")
+
+    def validate_metadata(self, metadata: Dict[str, Dict[str, Union[str, None]]]) -> None:
+        """
+        Validates the metadata dictionary to ensure it meets structural and content requirements.
+
+        Args:
+            metadata (Dict[str, Dict[str, Union[str, None]]]): Metadata to validate.
+
+        Raises:
+            ValueError: If validation checks fail.
+        """
+        # Check if metadata is a non-empty dictionary
+        if not metadata or not isinstance(metadata, dict):
+            raise ValueError("Invalid metadata provided: Must be a non-empty dictionary.")
+
+        for table, fields in metadata.items():
+            # Validate each field dictionary
+            if not fields or not isinstance(fields, dict):
+                raise ValueError(f"Invalid fields for table '{table}': Must be a non-empty dictionary.")
+            # Additional field-level validation
+            for column, value in fields.items():
+                if not isinstance(column, str):
+                    raise ValueError(f"Invalid column name in table '{table}': {column}")
+                if value is None:
+                    self.logger.warning(f"Null value for column '{column}' in table '{table}'.")
 
     def upload_metadata(self, metadata: Dict[str, Dict[str, Union[str, None]]]) -> None:
         """
@@ -75,23 +103,21 @@ class GeoMetadataUploader(DatabaseUploader):
         Raises:
             ValueError: Raised if SQL errors or invalid data occur during the upload.
         """
-        # Validate metadata to ensure it is a non-empty dictionary
-        if not metadata or not isinstance(metadata, dict):
-            raise ValueError("Invalid metadata provided for upload. Must be a non-empty dictionary.")
+        # Validate metadata structure
+        self.validate_metadata(metadata)
 
         # Iterate through each table and its fields in the metadata dictionary
         for table, fields in metadata.items():
-            # Validate each field dictionary to ensure correct type and content
-            if not fields or not isinstance(fields, dict):
-                raise ValueError(f"Invalid fields for table '{table}': Must be a non-empty dictionary.")
-
-            # Prepare SQL insertion query to insert records into the table
             try:
+                # Validate required fields
+                if not fields:
+                    raise ValueError(f"No fields provided for table '{table}'.")
+
                 # Dynamically construct SQL INSERT query with placeholders for data insertion
                 insert_query = sql.SQL("INSERT INTO {} ({}) VALUES ({})").format(
                     sql.Identifier(table),  # Set table name dynamically
                     sql.SQL(', ').join(map(sql.Identifier, fields.keys())),  # Set column names dynamically
-                    sql.SQL(', ').join(sql.Placeholder() * len(fields))  # Placeholders for column values
+                    sql.SQL(', ').join(sql.Placeholder() for _ in fields)  # Placeholders for column values
                 )
 
                 # Execute the SQL insertion using values from the fields dictionary
@@ -101,17 +127,19 @@ class GeoMetadataUploader(DatabaseUploader):
 
                 # Log success message if debug mode is enabled
                 if self.debug:
-                    print(f"[DEBUG] Successfully inserted data into '{table}': {fields}")
-            except DatabaseError as e:
-                # Roll back transaction in case of errors to prevent partial data insertion
+                    self.logger.debug(f"Successfully inserted data into '{table}': {fields}")
+
+            except IntegrityError as e:
+                # Handle violations of unique or foreign key constraints
                 self.connection.rollback()
+                self.logger.error(f"Integrity error while inserting into '{table}': {e}")
+                raise ValueError(f"Integrity error while inserting into '{table}': {e}")
 
-                # Log detailed error if debug mode is enabled
-                if self.debug:
-                    print(f"[DEBUG] Failed to insert data into '{table}': {fields}. Error: {e}")
-
-                # Raise ValueError to notify the calling code of the failed upload
-                raise ValueError(f"Failed to upload metadata to table '{table}': {e}")
+            except DatabaseError as e:
+                # Handle general database errors
+                self.connection.rollback()
+                self.logger.error(f"Database error while inserting into '{table}': {e}")
+                raise ValueError(f"Database error while inserting into '{table}': {e}")
 
     def _disconnect(self) -> None:
         """
@@ -121,21 +149,22 @@ class GeoMetadataUploader(DatabaseUploader):
             ConnectionError: If errors occur during disconnection.
         """
         # Check if the cursor exists and close it if initialized
-        if hasattr(self, 'cursor') and self.cursor:
+        if self.cursor:
             try:
                 self.cursor.close()
                 if self.debug:
-                    print("[DEBUG] PostgreSQL cursor closed.")
+                    self.logger.debug("PostgreSQL cursor closed.")
             except Exception as e:
-                # Raise ConnectionError if cursor closing fails
+                self.logger.error(f"Error closing cursor: {e}")
                 raise ConnectionError(f"Error closing cursor: {e}")
 
         # Check if the connection exists and close it if initialized
-        if hasattr(self, 'connection') and self.connection:
+        if self.connection:
             try:
                 self.connection.close()
                 if self.debug:
-                    print("[DEBUG] PostgreSQL connection closed.")
+                    self.logger.debug("PostgreSQL connection closed.")
             except Exception as e:
-                # Raise ConnectionError if connection closing fails
-                raise ConnectionError(f"Error closing connection to PostgreSQL: {e}")
+                self.logger.error(f"Error closing connection: {e}")
+                raise ConnectionError(f"Error closing connection: {e}")
+

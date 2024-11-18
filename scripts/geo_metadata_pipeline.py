@@ -1,3 +1,5 @@
+# File: scripts/geo_metadata_pipeline.py
+
 # Import necessary classes for downloading and extracting GEO metadata
 from pipeline.geo_pipeline.geo_metadata_downloader import GeoMetadataDownloader  # Downloader class
 from pipeline.geo_pipeline.geo_metadata_extractor import GeoMetadataExtractor  # Extractor class
@@ -65,7 +67,7 @@ except Exception as e:
     print(f"Failed to write to log file: {e}")
 
 # Define the output directory for downloaded GEO metadata
-OUTPUT_DIR = os.path.join(BASE_DIR, "../resources/data/metadata/geo_metadata")
+OUTPUT_DIR = os.path.join(BASE_DIR, "../resources/data/metadata/geo_metadata/raw_metadata")
 
 # Define the file path for the list of GEO IDs to process
 GEO_IDS_FILE = os.path.join(BASE_DIR, "../resources/geo_ids.txt")

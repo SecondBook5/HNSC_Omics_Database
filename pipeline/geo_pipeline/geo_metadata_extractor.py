@@ -379,7 +379,7 @@ class GeoMetadataExtractor:
 
 # ---------------- Execution ----------------
 if __name__ == "__main__":
-    FILE_PATH = "../../resources/data/metadata/geo_metadata/GSE112026_family.xml"
+    FILE_PATH = "../../resources/data/metadata/geo_metadata/raw_metadata/GSE112026_family.xml"
     TEMPLATE_PATH = "../../resources/geo_tag_template.json"
 
     # Instantiate and run the metadata extractor

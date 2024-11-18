@@ -229,7 +229,7 @@ class GeoMetadataDownloader(DataDownloader):
 # ---------------- Execution ----------------
 if __name__ == "__main__":
     # Output directory for GEO metadata files
-    OUTPUT_DIR = "../../resources/data/metadata/geo_metadata"
+    OUTPUT_DIR = "../../resources/data/metadata/geo_metadata/raw_metadata"
     # File containing GEO series IDs to download
     GEO_IDS_FILE = "../../resources/geo_ids.txt"
 
