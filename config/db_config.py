@@ -1,4 +1,4 @@
-# db_config.py
+# File: config/db_config.py
 # This file serves as a centralized controller for database configurations in the HNSC Omics Database project.
 # It provides unified access to PostgreSQL and MongoDB connections, handling session management, error handling,
 # and defensive programming for reliable database operations across the project.

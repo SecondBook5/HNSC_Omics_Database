@@ -20,3 +20,5 @@ lxml
 pydantic
 matplotlib
 seaborn
+gprofiler-official
+

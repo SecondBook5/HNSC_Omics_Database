@@ -1,178 +1,99 @@
 """
-This module defines the ORM (Object Relational Mapping) models for storing metadata related to biological datasets
-within a database. It utilizes SQLAlchemy to map Python classes to tables in a relational database, allowing for
-structured storage and easy querying of dataset metadata, particularly for GEO datasets.
+This module defines the initial schema for storing GEO dataset metadata in PostgreSQL.
 
-Classes:
-    - DatasetSeriesMetadata: Represents series-level metadata for each dataset series, including fields such as title,
-      submission dates, and experimental design. This table captures information about the dataset as a whole.
-
-    - DatasetSampleMetadata: Represents sample-level metadata within a series, covering clinical, demographic,
-      and experimental details for each individual sample. This table is linked to DatasetSeriesMetadata through
-      a foreign key, allowing samples to be organized under each dataset series.
+Overview:
+    - This schema includes tables for series-level and sample-level metadata for biological datasets.
+    - It focuses on essential fields needed for basic workflows such as RNA-Seq normalization.
+    - Includes a logging table to track download and processing statuses for GEO datasets.
 
 Key Concepts:
-    - The 'Series' class defines high-level dataset information (e.g., GEO Series), while the 'Sample' class provides
-      details for each sample within a dataset (e.g., GEO Samples). These models provide a normalized structure that
-      supports efficient querying and retrieval of both series-level and sample-level metadata.
-    - SQLAlchemy relationships are used to link samples to their series, enabling seamless access from series to samples
-      and vice versa.
-    - This setup supports a research environment where datasets from GEO or other omics sources are curated, stored,
-      and analyzed, with a focus on clinical and demographic data relevant to cancer research.
+    - DatasetSeriesMetadata: Captures series-level information like dataset title, submission date,
+      organism, and related publication (PubMedID).
+    - DatasetSampleMetadata: Captures sample-level details such as organism, library strategy, and source type.
+    - GeoMetadataLog: Tracks the success or failure of GEO metadata downloads and processing.
 
-Configuration:
-    - The module relies on 'db.db_config' for base configuration, where the SQLAlchemy Base class is imported. The
-      database engine and session configurations should be set up in 'db.db_config'.
+Why This Design:
+    - Consolidates fields like GEOAccession and SeriesID to avoid redundancy.
+    - Keeps the initial schema lightweight while allowing future expansions.
+    - Supports efficient querying of series-sample relationships and publication links.
+
+Future Expansions:
+    - Additional fields can be added later in separate files (e.g., `series_metadata.py`, `sample_metadata.py`)
+      for workflows requiring detailed metadata like `SupplementaryData` or `OverallDesign`.
 """
 
-from sqlalchemy import Column, String, Integer, Date, Text, ForeignKey, Index, UniqueConstraint
-from sqlalchemy.orm import relationship
-from config.db_config import Base
+# Import SQLAlchemy modules for defining the schema
+from sqlalchemy import Column, String, Integer, Date, Text, TIMESTAMP, ForeignKey, func
+from sqlalchemy.orm import relationship  # For relationships between tables
+from sqlalchemy.dialects.postgresql import ARRAY  # Import ARRAY type for PostgreSQL
+from config.db_config import Base  # Import Base for ORM model inheritance
 
 
 class DatasetSeriesMetadata(Base):
     """
-    DatasetSeriesMetadata captures series-level metadata for each dataset.
-    Includes title, submission dates, contributors, summary, and more.
+    Captures series-level metadata for biological datasets.
 
     Attributes:
-        SeriesID (str): Primary key, unique identifier for each dataset series.
-        Title (str): Title of the study or dataset.
-        GEOAccession (str): GEO series accession number (e.g., GSE195832).
-        Status (str): Publication status (e.g., Public).
-        SubmissionDate (Date): Date of submission.
-        LastUpdateDate (Date): Last updated date.
-        PubMedID (int): Associated PubMed ID for published studies.
-        Summary (str): Summary of objectives and findings.
-        OverallDesign (str): Overview of the experimental design.
-        SeriesType (str): Type of analysis (e.g., "Expression profiling").
-        PlatformID (str): Platform used (e.g., GPL24676).
-        Organism (str): Organism studied.
-        Contributors (str): List of contributors.
-        DatabaseName (str): Name of the database (e.g., GEO).
-        DatabasePublicID (str): Public ID for the database.
-        DatabaseOrganization (str): Organization responsible for the database.
-        DatabaseWebLink (str): Web link to the database.
-        DatabaseEmail (str): Contact email for the database.
+        SeriesID (str): Primary key, unique identifier for each series (e.g., GSE114446).
+        Title (str): Descriptive title of the dataset.
+        SubmissionDate (Date): Date the dataset was submitted.
+        Organism (str): Organism studied in the dataset (e.g., Homo sapiens).
+        PubMedID (int): PubMed ID for publications associated with the dataset.
     """
-    __tablename__ = 'dataset_series_metadata'
+    __tablename__ = 'dataset_series_metadata'  # Name of the table in the database
 
-    SeriesID = Column(String, primary_key=True)
-    Title = Column(String, nullable=False)
-    GEOAccession = Column(String, unique=True, nullable=False)
-    Status = Column(String, nullable=False)
-    SubmissionDate = Column(Date, nullable=False)
-    LastUpdateDate = Column(Date, nullable=True)
-    PubMedID = Column(Integer, nullable=True)
-    Summary = Column(Text, nullable=True)
-    OverallDesign = Column(Text, nullable=True)
-    SeriesType = Column(String, nullable=False)
-    PlatformID = Column(String, nullable=False)
-    Organism = Column(String, nullable=False)
-    Contributors = Column(Text, nullable=True)
-    DatabaseName = Column(String, nullable=True)
-    DatabasePublicID = Column(String, nullable=True)
-    DatabaseOrganization = Column(String, nullable=True)
-    DatabaseWebLink = Column(String, nullable=True)
-    DatabaseEmail = Column(String, nullable=True)
+    # Define the primary key and essential columns
+    SeriesID = Column(String, primary_key=True)  # Unique identifier for the series (e.g., GSE114446)
+    Title = Column(String, nullable=False)  # Title or name of the series
+    SubmissionDate = Column(Date, nullable=False)  # Date when the series was submitted
+    Organism = Column(String, nullable=False)  # Organism studied in the series
+    PubMedID = Column(Integer, nullable=True)  # PubMed ID linking to a publication
 
-    # Relationships
-    Samples = relationship("DatasetSampleMetadata", back_populates="Series")
-
-    __table_args__ = (
-        UniqueConstraint('GEOAccession', name='uq_geo_accession'),
-    )
+    # Define the relationship to the DatasetSampleMetadata table
+    Samples = relationship("DatasetSampleMetadata", back_populates="Series")  # Links series to its samples
 
 
 class DatasetSampleMetadata(Base):
     """
-    DatasetSampleMetadata captures sample-level metadata, covering clinical,
-    demographic, and technical characteristics.
+    Captures sample-level metadata within a dataset series.
 
     Attributes:
-        SampleID (str): Primary key, unique identifier.
-        GEOAccession (str): GEO sample accession number (e.g., GSM123456).
-        SeriesID (str): Foreign key linking to DatasetSeriesMetadata.
-        Title (str): Description of the sample.
-        Status (str): Publication status.
-        SubmissionDate (Date): Date of submission.
-        LastUpdateDate (Date): Last update date.
-        SampleType (str): RNA, DNA type, etc.
-        Organism (str): Organism.
-        PlatformID (str): Platform used.
-        Source (str): Biological source or material.
-        Characteristics (str): Tissue type or descriptors.
-        Protocol (str): Sample preparation protocols.
-        DataProcessing (str): Description of data processing.
-        SupplementaryFiles (str): URLs or paths to supplementary files.
-        Age (int): Patient age.
-        Gender (str): Patient gender.
-        Race (str): Patient race.
-        Smoking (str): Smoking history.
-        AlcoholUse (str): Alcohol consumption status.
-        ClinicalStage (str): Clinical stage of disease.
-        HPVIntegration (str): HPV integration status.
-        HPVType (str): HPV type.
-        TStage (str): Tumor stage.
-        NStage (str): Node stage.
-        AnatomicTNMStage (str): Anatomic TNM stage.
-        TimeToDeathOrFollowUp (int): Time to death or follow-up in months.
-        DiseaseStatusLastFollowup (str): Disease status at last clinical follow-up.
-        PrimarySurgicalTherapy (str): If primary surgery was performed.
-        PrimaryChemotherapy (str): If primary chemotherapy was administered.
-        PrimaryRadiationTherapy (str): If primary radiation therapy was administered.
-        Antibody (str): Antibody used for ChIP-Seq experiments.
-        LibraryStrategy (str): Strategy for library preparation.
-        LibrarySource(str): Omics type
-        LibrarySelection(str): Region of interest specificity
-        SupplementaryDataType (str): Type of supplementary data file.
-        BioSampleRelation (str): External link to BioSample resource.
-        SupplementaryFilesFormatAndContent (str): Details of supplementary files.
+        SampleID (str): Primary key, unique identifier for each sample (e.g., GSM3141829).
+        SeriesID (str): Foreign key linking to the associated series.
+        Organism (str): Organism studied in the sample (e.g., Homo sapiens).
+        LibraryStrategy (str): Library preparation strategy (e.g., RNA-Seq).
+        LibrarySource (str): Type of source material (e.g., transcriptomic).
     """
-    __tablename__ = 'dataset_sample_metadata'
+    __tablename__ = 'dataset_sample_metadata'  # Name of the table in the database
 
-    SampleID = Column(String, primary_key=True)
-    GEOAccession = Column(String, unique=True, nullable=False)
-    SeriesID = Column(String, ForeignKey('dataset_series_metadata.SeriesID'), nullable=False)
-    Title = Column(String, nullable=True)
-    Status = Column(String, nullable=False)
-    SubmissionDate = Column(Date, nullable=True)
-    LastUpdateDate = Column(Date, nullable=True)
-    SampleType = Column(String, nullable=True)
-    Organism = Column(String, nullable=True)
-    PlatformID = Column(String, nullable=True)
-    Source = Column(Text, nullable=True)
-    Characteristics = Column(Text, nullable=True)
-    Protocol = Column(Text, nullable=True)
-    DataProcessing = Column(Text, nullable=True)
-    SupplementaryFiles = Column(Text, nullable=True)
-    Age = Column(Integer, nullable=True)
-    Gender = Column(String, nullable=True)
-    Race = Column(String, nullable=True)
-    Smoking = Column(String, nullable=True)
-    AlcoholUse = Column(String, nullable=True)
-    ClinicalStage = Column(String, nullable=True)
-    HPVIntegration = Column(String, nullable=True)
-    HPVType = Column(String, nullable=True)
-    TStage = Column(String, nullable=True)
-    NStage = Column(String, nullable=True)
-    AnatomicTNMStage = Column(String, nullable=True)
-    TimeToDeathOrFollowUp = Column(Integer, nullable=True)
-    DiseaseStatusLastFollowup = Column(String, nullable=True)
-    PrimarySurgicalTherapy = Column(String, nullable=True)
-    PrimaryChemotherapy = Column(String, nullable=True)
-    PrimaryRadiationTherapy = Column(String, nullable=True)
-    Antibody = Column(String, nullable=True)
-    LibraryStrategy = Column(String, nullable=True)
-    LibrarySource = Column(String, nullable=True)
-    LibrarySelection = Column(String, nullable=True)
-    SupplementaryDataType = Column(String, nullable=True)
-    BioSampleRelation = Column(String, nullable=True)
-    SupplementaryFilesFormatAndContent = Column(Text, nullable=True)
+    # Define the primary key and essential columns
+    SampleID = Column(String, primary_key=True)  # Unique identifier for the sample
+    SeriesID = Column(String, ForeignKey('dataset_series_metadata.SeriesID'), nullable=False)  # Links to a series
+    Organism = Column(String, nullable=True)  # Organism studied in the sample
+    LibraryStrategy = Column(String, nullable=True)  # Strategy used for library preparation
+    LibrarySource = Column(String, nullable=True)  # Source type (e.g., transcriptomic)
 
-    # Relationships
-    Series = relationship("DatasetSeriesMetadata", back_populates="Samples")
+    # Define the relationship to the DatasetSeriesMetadata table
+    Series = relationship("DatasetSeriesMetadata", back_populates="Samples")  # Links sample to its series
 
-    __table_args__ = (
-        Index('ix_geo_sample_accession', 'GEOAccession'),
-    )
+
+class GeoMetadataLog(Base):
+    """
+    Logs download and processing statuses for GEO metadata.
+
+    Attributes:
+        id (int): Auto-incrementing primary key for the log entry.
+        geo_id (str): GEO series or sample ID being logged (e.g., GSE114446 or GSM3141829).
+        status (str): Status of the operation (e.g., 'Success', 'Failure').
+        message (str): Details or error messages related to the operation.
+        log_time (timestamp): Timestamp when the log entry was created.
+    """
+    __tablename__ = 'geo_metadata_log'  # Name of the table in the database
+
+    # Define the primary key and essential columns
+    id = Column(Integer, primary_key=True, autoincrement=True)  # Auto-incrementing log ID
+    geo_id = Column(String(50), nullable=False)  # ID of the GEO series or sample
+    status = Column(String(20), nullable=False)  # Status of the operation
+    message = Column(Text, nullable=True)  # Additional details or error messages
+    file_names = Column(ARRAY(String), nullable=True)  # List of file names related to the GEO ID
+    log_time = Column(TIMESTAMP, server_default=func.now())  # Timestamp of the log entry
