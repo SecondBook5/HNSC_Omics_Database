@@ -9,11 +9,11 @@
       <jdbc-url>jdbc:postgresql://localhost:5432/hnsc_omics_pg</jdbc-url>
       <working-dir>$ProjectFileDir$</working-dir>
     </data-source>
-    <data-source source="LOCAL" name="hnsc_omics_mongo" uuid="5054b42a-64ed-4606-8f05-76e00b18b88f">
+    <data-source source="LOCAL" name="hnsc_omics_mongo" uuid="519ea31c-d811-4706-b56d-8941d42f876b">
       <driver-ref>mongo.4</driver-ref>
       <synchronize>true</synchronize>
       <jdbc-driver>com.dbschema.MongoJdbcDriver</jdbc-driver>
-      <jdbc-url>mongodb://localhost:27017/hnsc_omics_mongo</jdbc-url>
+      <jdbc-url>mongodb://localhost:27017/hnsc_omics_mongo?authSource=hnsc_omics_mongo</jdbc-url>
       <working-dir>$ProjectFileDir$</working-dir>
     </data-source>
   </component>

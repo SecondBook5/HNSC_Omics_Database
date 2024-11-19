@@ -92,7 +92,7 @@ class GeoMetadataLog(Base):
 
     # Define the primary key and essential columns
     id = Column(Integer, primary_key=True, autoincrement=True)  # Auto-incrementing log ID
-    geo_id = Column(String(50), nullable=False)  # ID of the GEO series or sample
+    geo_id = Column(String(50), nullable=False, unique = True)  # ID of the GEO series or sample
     status = Column(String(20), nullable=False)  # Status of the operation
     message = Column(Text, nullable=True)  # Additional details or error messages
     file_names = Column(ARRAY(String), nullable=True)  # List of file names related to the GEO ID
