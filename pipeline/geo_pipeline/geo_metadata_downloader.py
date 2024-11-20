@@ -3,8 +3,9 @@
 import tarfile  # For handling .tar.gz file extraction
 import os  # For file and directory management
 import requests  # For making HTTP requests
-import logging  # For logging debug and error messages
+import logging
 from typing import Optional, List  # For type hints
+from config.logger_config import configure_logger  # Import centralized logger configuration
 
 
 class GeoMetadataDownloader:
@@ -18,14 +19,13 @@ class GeoMetadataDownloader:
         logger (logging.Logger): Logger instance for debug and info output.
     """
 
-    def __init__(self, output_dir: str, debug: bool = False, logger: Optional[logging.Logger] = None) -> None:
+    def __init__(self, output_dir: str, debug: bool = False) -> None:
         """
         Initializes GeoMetadataDownloader with output directory and optional debug flag.
 
         Args:
             output_dir (str): Directory to save downloaded files.
             debug (bool): Enables debug output if True.
-            logger (Optional[logging.Logger]): Optional external logger to use.
         """
         # Validate that the output directory is provided
         if not output_dir:
@@ -38,30 +38,14 @@ class GeoMetadataDownloader:
         # Base URL for constructing GEO file download links
         self.base_url: str = "https://ftp.ncbi.nlm.nih.gov/geo/series"
 
-        # Use the provided logger or set up a default logger
-        self.logger: logging.Logger = logger or self._initialize_default_logger(debug)
-
-    @staticmethod
-    def _initialize_default_logger(debug: bool) -> logging.Logger:
-        """
-        Initializes and returns a default logger if none is provided.
-
-        Args:
-            debug (bool): Enables debug output if True.
-
-        Returns:
-            logging.Logger: Configured logger instance.
-        """
-        # Create a logger instance specific to the downloader
-        logger = logging.getLogger("GeoMetadataDownloader")
-        # Set the logging level to DEBUG if debug is enabled, otherwise INFO
-        logger.setLevel(logging.DEBUG if debug else logging.INFO)
-        # Add a stream handler if no handlers are attached
-        if not logger.hasHandlers():
-            handler = logging.StreamHandler()
-            handler.setFormatter(logging.Formatter("[%(levelname)s] %(message)s"))
-            logger.addHandler(handler)
-        return logger
+        # Configure the logger using the centralized logger configuration
+        self.logger = configure_logger(
+            name="GeoMetadataDownloader",
+            log_dir="./logs",
+            log_file="geo_metadata_downloader.log",
+            level=logging.DEBUG if debug else logging.INFO,
+            output="both"
+        )
 
     def download_files(self, file_ids: List[str]) -> None:
         """
