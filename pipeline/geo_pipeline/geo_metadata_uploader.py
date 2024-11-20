@@ -1,112 +1,145 @@
 import logging
-from sqlalchemy import Table, MetaData, Column, String, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import SQLAlchemyError
-from typing import List
-from config.db_config import get_postgres_engine
+from config.db_config import get_postgres_engine, get_session_context
+from db.schema.metadata_schema import DatasetSeriesMetadata, DatasetSampleMetadata, GeoMetadataLog
+from utils.exceptions import MissingForeignKeyError  # Import the custom exception
+from typing import List, Dict
 
-# Configure logger
-logging.basicConfig(level=logging.DEBUG)
+# Configure logger for the uploader
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
 class GeoMetadataUploader:
     """
-    Handles uploading GEO IDs to the database and updating their status.
-
-    Attributes:
-        engine: SQLAlchemy engine for database interactions.
-        table_name (str): Name of the table to store GEO metadata.
+    Handles uploading GEO metadata (series, sample) and logging operations to the database.
     """
 
-    def __init__(self, engine, table_name: str) -> None:
+    def __init__(self) -> None:
         """
-        Initializes the uploader with a SQLAlchemy engine and table name.
+        Initializes the uploader with database configurations.
+        """
+        self.engine = get_postgres_engine()  # Access PostgreSQL engine for database operations
+
+    def upload_series_metadata(self, series_metadata: List[Dict]) -> None:
+        """
+        Uploads series metadata to the database.
 
         Args:
-            engine: SQLAlchemy engine for database interactions.
-            table_name (str): The name of the table to upload GEO metadata.
-        """
-        self.engine = engine
-        self.table_name = table_name
-        self.metadata = MetaData()
-        self.geo_metadata_table = Table(self.table_name, self.metadata, autoload_with=self.engine)
-
-    def upload_metadata(self, geo_metadata: List[dict]) -> None:
-        """
-        Uploads GEO metadata to the database and sets their status to 'not-downloaded'.
-
-        Args:
-            geo_metadata (List[dict]): List of GEO metadata dictionaries to upload.
+            series_metadata (List[Dict]): List of dictionaries containing series metadata.
 
         Raises:
-            ValueError: If geo_metadata list is empty or contains invalid entries.
+            ValueError: If the series_metadata list is empty.
+            SQLAlchemyError: If a database error occurs during the upload.
         """
-        if not geo_metadata:
-            raise ValueError("Metadata list cannot be empty.")
+        # Ensure the input is not empty
+        if not series_metadata:
+            raise ValueError("Series metadata list cannot be empty.")
 
         try:
-            with self.engine.begin() as conn:  # Use a single transaction
-                # Perform an upsert operation (insert or do nothing if the row exists)
-                insert_query = insert(self.geo_metadata_table).values(geo_metadata).on_conflict_do_nothing()
-                result = conn.execute(insert_query)
-                logger.info(f"Inserted {result.rowcount} rows into the table '{self.table_name}'.")
-
-                # Validation: Check if all GEO IDs were inserted
-                geo_ids_to_check = [item["geo_id"] for item in geo_metadata]
-                validation_query = select(self.geo_metadata_table.c.geo_id).where(
-                    self.geo_metadata_table.c.geo_id.in_(geo_ids_to_check)
-                )
-                inserted_geo_ids = [row.geo_id for row in conn.execute(validation_query)]
-                missing_geo_ids = set(geo_ids_to_check) - set(inserted_geo_ids)
-
-                if missing_geo_ids:
-                    logger.warning(f"Some GEO IDs were not inserted: {missing_geo_ids}")
-                else:
-                    logger.info("All GEO IDs successfully uploaded and validated.")
+            # Use a session context for database operations
+            with get_session_context() as session:
+                for series in series_metadata:
+                    # Perform an upsert (insert or do nothing if the row exists)
+                    insert_query = insert(DatasetSeriesMetadata).values(series).on_conflict_do_nothing()
+                    session.execute(insert_query)  # Execute the upsert query
+                session.commit()  # Commit the transaction to save changes
+                logger.info(f"Successfully inserted series metadata for {len(series_metadata)} entries.")
         except SQLAlchemyError as e:
-            logger.error(f"Database error during GEO metadata upload: {e}")
-            raise
-        except Exception as e:
-            logger.error(f"Unexpected error during GEO metadata upload: {e}")
+            # Log and raise database errors
+            logger.error(f"Database error during series metadata upload: {e}")
             raise
 
-    def update_status(self, geo_id: str, status: str) -> None:
+    def upload_sample_metadata(self, sample_metadata: List[Dict]) -> None:
         """
-        Updates the status of a specific GEO ID in the database.
+        Uploads sample metadata to the database. Ensures that corresponding series exist.
 
         Args:
-            geo_id (str): The GEO series ID to update.
-            status (str): The new status to set (e.g., 'downloaded').
+            sample_metadata (List[Dict]): List of dictionaries containing sample metadata.
 
         Raises:
-            ValueError: If the GEO ID or status is invalid.
+            MissingForeignKeyError: If referenced series do not exist.
+            ValueError: If the sample_metadata list is empty.
+            SQLAlchemyError: If a database error occurs during the upload.
         """
-        if not geo_id or not geo_id.startswith("GSE"):
-            raise ValueError("Invalid GEO ID format.")
-        if not status:
-            raise ValueError("Status cannot be empty.")
+        # Ensure the input is not empty
+        if not sample_metadata:
+            raise ValueError("Sample metadata list cannot be empty.")
 
         try:
-            with self.engine.begin() as conn:  # Use a single transaction
-                # Perform the update query
-                update_query = update(self.geo_metadata_table).where(
-                    self.geo_metadata_table.c.geo_id == geo_id
-                ).values(status=status)
-                result = conn.execute(update_query)
+            # Use a session context for database operations
+            with get_session_context() as session:
+                # Extract all SeriesIDs from the sample metadata
+                series_ids = {sample["SeriesID"] for sample in sample_metadata}
 
-                logger.debug(f"Executed SQL: {update_query}")
-                logger.debug(f"Parameters: GEO ID = {geo_id}, Status = {status}")
+                # Query the database to find existing SeriesIDs
+                existing_series = session.query(DatasetSeriesMetadata.SeriesID).filter(
+                    DatasetSeriesMetadata.SeriesID.in_(series_ids)
+                ).all()
+                # Convert query results to a set of SeriesIDs
+                existing_series_ids = {row.SeriesID for row in existing_series}
 
-                if result.rowcount > 0:
-                    logger.info(f"Status for GEO ID {geo_id} updated to '{status}'.")
-                else:
-                    logger.warning(f"GEO ID {geo_id} does not exist in the database. No rows updated.")
+                # Find missing SeriesIDs by subtracting found SeriesIDs from the input
+                missing_series_ids = series_ids - existing_series_ids
+
+                # Raise a custom exception if any SeriesIDs are missing
+                if missing_series_ids:
+                    raise MissingForeignKeyError(
+                        missing_keys=missing_series_ids,
+                        foreign_key_name="SeriesID"
+                    )
+
+                # Perform upsert for each sample metadata entry
+                for sample in sample_metadata:
+                    insert_query = insert(DatasetSampleMetadata).values(sample).on_conflict_do_nothing()
+                    session.execute(insert_query)  # Execute the upsert query
+                session.commit()  # Commit the transaction to save changes
+                logger.info(f"Successfully inserted sample metadata for {len(sample_metadata)} entries.")
         except SQLAlchemyError as e:
-            logger.error(f"Database error during status update for GEO ID {geo_id}: {e}")
+            # Log and raise database errors
+            logger.error(f"Database error during sample metadata upload: {e}")
             raise
-        except Exception as e:
-            logger.error(f"Unexpected error during status update for GEO ID {geo_id}: {e}")
+        except MissingForeignKeyError as e:
+            # Log and re-raise custom validation errors
+            logger.error(f"Validation error: {e}")
             raise
 
+    def log_metadata_operation(self, geo_id: str, status: str, message: str, file_names: List[str] = None) -> None:
+        """
+        Logs an operation's status for a specific GEO ID.
 
+        Args:
+            geo_id (str): The GEO series or sample ID being logged.
+            status (str): The status of the operation (e.g., 'downloaded', 'processed').
+            message (str): A detailed message or description of the operation.
+            file_names (List[str], optional): List of file names related to the GEO ID.
+
+        Raises:
+            ValueError: If 'geo_id' or 'status' is not provided.
+            SQLAlchemyError: If a database error occurs during the log operation.
+        """
+        # Validate required inputs
+        if not geo_id or not status:
+            raise ValueError("Both 'geo_id' and 'status' are required for logging.")
+
+        # Construct the log entry
+        log_entry = {
+            "geo_id": geo_id,
+            "status": status,
+            "message": message,
+            "file_names": file_names,
+        }
+
+        try:
+            # Use a session context for database operations
+            with get_session_context() as session:
+                # Perform an upsert for the log entry
+                insert_query = insert(GeoMetadataLog).values(log_entry).on_conflict_do_nothing()
+                session.execute(insert_query)
+                session.commit()  # Commit the transaction to save the log entry
+                logger.info(f"Log entry created for GEO ID '{geo_id}' with status '{status}'.")
+        except SQLAlchemyError as e:
+            # Log and raise database errors
+            logger.error(f"Database error during log entry creation: {e}")
+            raise

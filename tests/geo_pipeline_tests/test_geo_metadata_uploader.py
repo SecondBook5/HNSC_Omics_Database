@@ -1,150 +1,128 @@
-# File: tests/geo_pipeline_tests/test_geo_metadata_uploader.py
+import pytest
+from sqlalchemy.exc import SQLAlchemyError
+from db.schema.metadata_schema import DatasetSeriesMetadata, DatasetSampleMetadata, GeoMetadataLog
+from pipeline.geo_pipeline.geo_metadata_uploader import GeoMetadataUploader
+from config.db_config import get_session_context
+from utils.exceptions import MissingForeignKeyError  # Import the custom exception
 
-import pytest  # For test case organization and assertions
-from unittest.mock import patch, MagicMock  # For mocking database connections and methods
-from pipeline.geo_pipeline.geo_metadata_uploader import GeoMetadataUploader  # Import the class to test
-from psycopg2 import OperationalError, DatabaseError  # For simulating connection issues in PostgreSQL
-
-
-# Fixture to set up connection parameters for PostgreSQL
 @pytest.fixture
-def connection_params():
-    return {
-        "dbname": "test_db",
-        "user": "test_user",
-        "password": "test_password",
-        "host": "localhost",
-        "port": "5432"
-    }
-
-
-# Fixture to initialize the GeoMetadataUploader with mocked connection and debug mode
-@pytest.fixture
-def uploader(connection_params):
-    with patch('pipeline.geo_pipeline.geo_metadata_uploader.psycopg2.connect'):
-        return GeoMetadataUploader(connection_params=connection_params, debug=True)
-
-
-def test_successful_connection(uploader):
+def uploader():
     """
-    Test that the uploader successfully establishes a connection to the database.
+    Fixture to initialize the GeoMetadataUploader for testing.
     """
-    with patch.object(uploader, '_connect', return_value=True) as mock_connect:
-        assert uploader._connect() is True, "Expected successful connection setup"
-        mock_connect.assert_called_once()
+    return GeoMetadataUploader()
 
+@pytest.fixture(scope="function")
+def cleanup_database():
+    """
+    Cleanup fixture to ensure test data is removed after each test.
+    """
+    try:
+        with get_session_context() as session:
+            # Delete any test data inserted during the tests
+            session.query(DatasetSampleMetadata).filter(DatasetSampleMetadata.SeriesID == "GSE12345").delete()
+            session.query(DatasetSeriesMetadata).filter(DatasetSeriesMetadata.SeriesID == "GSE12345").delete()
+            session.query(GeoMetadataLog).filter(GeoMetadataLog.geo_id == "GSE12345").delete()
+            session.commit()
+    except SQLAlchemyError as e:
+        pytest.fail(f"Failed to clean up database: {e}")
 
-def test_failed_connection(connection_params):
+def test_upload_series_metadata(uploader, cleanup_database):
     """
-    Test that a ConnectionError is raised if the database connection cannot be established.
+    Test the upload_series_metadata method of GeoMetadataUploader using the actual database.
     """
-    # Mock `psycopg2.connect` to raise an OperationalError to simulate connection failure
-    with patch('pipeline.geo_pipeline.geo_metadata_uploader.psycopg2.connect', side_effect=OperationalError):
-        with pytest.raises(ConnectionError, match="Failed to establish connection to PostgreSQL"):
-            GeoMetadataUploader(connection_params=connection_params, debug=True)
-
-
-def test_upload_metadata_success(uploader):
-    """
-    Test successful metadata upload with mock data.
-    """
-    # Set up sample metadata to upload
-    sample_metadata = {
-        "SampleTable": {
-            "id": "123",
-            "name": "Sample Name",
-            "description": "Sample Description"
+    dummy_series = [
+        {
+            "SeriesID": "GSE12345",
+            "Title": "Test Series",
+            "SubmissionDate": "2024-01-01",
+            "Organism": "Homo sapiens",
+            "PubMedID": 12345678,
         }
-    }
+    ]
+    try:
+        uploader.upload_series_metadata(dummy_series)
+        # Verify the data was inserted
+        with get_session_context() as session:
+            result = session.query(DatasetSeriesMetadata).filter_by(SeriesID="GSE12345").first()
+            assert result is not None
+            assert result.Title == "Test Series"
+    except SQLAlchemyError as e:
+        pytest.fail(f"Failed to upload series metadata: {e}")
 
-    with patch.object(uploader, '_connect', return_value=True), \
-            patch.object(uploader, '_disconnect', return_value=None), \
-            patch.object(uploader, 'cursor', create=True) as mock_cursor:
-        # Call `upload_metadata` to test insert functionality
-        uploader.upload_metadata(sample_metadata)
-
-        # Verify that an INSERT command was called with the expected table and values
-        mock_cursor.execute.assert_called_once()
-
-        # Validate SQL placeholders and values without `as_string()`
-        _, insert_values = mock_cursor.execute.call_args[0]
-        assert insert_values == ("123", "Sample Name", "Sample Description")
-
-
-def test_upload_metadata_invalid_data(uploader):
+def test_upload_sample_metadata(uploader, cleanup_database):
     """
-    Test that a ValueError is raised for invalid metadata format.
+    Test the upload_sample_metadata method of GeoMetadataUploader using the actual database.
     """
-    with pytest.raises(ValueError, match="Invalid metadata provided for upload"):
-        uploader.upload_metadata({})  # Test with empty metadata dictionary
-
-
-def test_upload_metadata_sql_error(uploader):
-    """
-    Test handling of SQL errors during data upload.
-    """
-    sample_metadata = {
-        "SampleTable": {
-            "id": "123",
-            "name": "Sample Name",
-            "description": "Sample Description"
+    # Insert the dummy series metadata first
+    dummy_series = [
+        {
+            "SeriesID": "GSE12345",
+            "Title": "Test Series",
+            "SubmissionDate": "2024-01-01",
+            "Organism": "Homo sapiens",
+            "PubMedID": 12345678,
         }
-    }
-
-    with patch.object(uploader, 'cursor', create=True) as mock_cursor:
-        # Simulate a database error during execution
-        mock_cursor.execute.side_effect = DatabaseError("Database error")
-        with pytest.raises(ValueError, match="Failed to upload metadata to table"):
-            uploader.upload_metadata(sample_metadata)
-
-
-def test_disconnect_successful(uploader):
-    """
-    Test successful disconnection from the database.
-    """
-    uploader.connection = MagicMock()
-    uploader.cursor = MagicMock()
-
-    uploader._disconnect()
-    # Check if cursor and connection close methods are called
-    uploader.cursor.close.assert_called_once()
-    uploader.connection.close.assert_called_once()
-
-
-def test_disconnect_with_errors(uploader):
-    """
-    Test error handling during disconnection.
-    """
-    uploader.connection = MagicMock()
-    uploader.cursor = MagicMock()
-
-    uploader.cursor.close.side_effect = Exception("Cursor close error")
-    with pytest.raises(ConnectionError, match="Error closing cursor"):
-        uploader._disconnect()
-
-    # Clear cursor close effect and set connection close effect to simulate separate error
-    uploader.cursor.close.side_effect = None
-    uploader.connection.close.side_effect = Exception("Connection close error")
-    with pytest.raises(ConnectionError, match="Error closing connection to PostgreSQL"):
-        uploader._disconnect()
-
-
-def test_debug_logging_enabled(uploader, capsys):
-    """
-    Test that debug logging outputs expected messages when debug mode is enabled.
-    """
-    uploader.debug = True  # Enable debug mode
-    sample_metadata = {
-        "SampleTable": {
-            "id": "123",
-            "name": "Sample Name",
-            "description": "Sample Description"
+    ]
+    dummy_samples = [
+        {
+            "SampleID": "GSM12345",
+            "SeriesID": "GSE12345",
+            "Organism": "Homo sapiens",
+            "LibraryStrategy": "RNA-Seq",
+            "LibrarySource": "transcriptomic",
         }
-    }
+    ]
+    try:
+        # Upload series first
+        uploader.upload_series_metadata(dummy_series)
+        # Now upload sample metadata
+        uploader.upload_sample_metadata(dummy_samples)
+        # Verify the sample data was inserted
+        with get_session_context() as session:
+            result = session.query(DatasetSampleMetadata).filter_by(SampleID="GSM12345").first()
+            assert result is not None
+            assert result.LibraryStrategy == "RNA-Seq"
+    except SQLAlchemyError as e:
+        pytest.fail(f"Failed to upload sample metadata: {e}")
 
-    with patch.object(uploader, 'cursor', create=True) as mock_cursor:
-        uploader.upload_metadata(sample_metadata)
+def test_log_metadata_operation(uploader, cleanup_database):
+    """
+    Test the log_metadata_operation method of GeoMetadataUploader using the actual database.
+    """
+    try:
+        uploader.log_metadata_operation(
+            geo_id="GSE12345",
+            status="processed",
+            message="Test log entry",
+            file_names=["test_file_1.txt", "test_file_2.txt"],
+        )
+        # Verify the log entry was inserted
+        with get_session_context() as session:
+            result = session.query(GeoMetadataLog).filter_by(geo_id="GSE12345").first()
+            assert result is not None
+            assert result.status == "processed"
+            assert "test_file_1.txt" in result.file_names
+    except SQLAlchemyError as e:
+        pytest.fail(f"Failed to log metadata operation: {e}")
 
-    # Capture the debug output
-    captured = capsys.readouterr()
-    assert "[DEBUG] Successfully inserted data into 'SampleTable'" in captured.out
+def test_missing_foreign_key_exception(uploader, cleanup_database):
+    """
+    Test the upload_sample_metadata method to ensure MissingForeignKeyError is raised
+    when sample metadata references a non-existent SeriesID.
+    """
+    dummy_samples = [
+        {
+            "SampleID": "GSM12345",
+            "SeriesID": "GSE12345",  # This SeriesID does not exist in the database
+            "Organism": "Homo sapiens",
+            "LibraryStrategy": "RNA-Seq",
+            "LibrarySource": "transcriptomic",
+        }
+    ]
+    with pytest.raises(MissingForeignKeyError) as excinfo:
+        uploader.upload_sample_metadata(dummy_samples)
+
+    # Verify that the exception contains the expected message
+    assert "Missing foreign key constraint for SeriesID" in str(excinfo.value)
+    assert "GSE12345" in str(excinfo.value)
