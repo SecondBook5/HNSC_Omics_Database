@@ -2,7 +2,7 @@
 import os  # For handling file and directory operations
 import logging  # For structured logging of pipeline events
 from pipeline.geo_pipeline.geo_metadata_downloader import GeoMetadataDownloader  # For downloading GEO files
-from pipeline.geo_pipeline.geo_metadata_extractor import GeoMetadataExtractor  # For extracting metadata
+from pipeline.geo_pipeline.geo_metadata_etl import GeoMetadataExtractor  # For extracting metadata
 from pipeline.geo_pipeline.geo_metadata_uploader import GeoMetadataUploader  # For uploading metadata to the database
 from config.db_config import get_session_context  # For managing database session
 from utils.connection_checker import DatabaseConnectionChecker  # For validating database connections

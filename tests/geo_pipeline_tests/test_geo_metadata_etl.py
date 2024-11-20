@@ -2,7 +2,7 @@ import pytest
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy import create_engine
 from unittest.mock import patch
-from pipeline.geo_pipeline.geo_metadata_extractor import GeoMetadataExtractor
+from pipeline.geo_pipeline.geo_metadata_etl import GeoMetadataETL
 from db.schema.metadata_schema import DatasetSeriesMetadata, DatasetSampleMetadata
 from lxml import etree
 import json
@@ -72,14 +72,14 @@ def valid_template_file(tmp_path):
 
 def test_initialization(valid_miniml_file, valid_template_file):
     """Test GeoMetadataExtractor initialization."""
-    extractor = GeoMetadataExtractor(valid_miniml_file, valid_template_file, debug_mode=True)
+    extractor = GeoMetadataETL(valid_miniml_file, valid_template_file, debug_mode=True)
     assert extractor.file_path == valid_miniml_file
     assert extractor.template_path == valid_template_file
     assert extractor.debug_mode is True
 
 def test_validate_xml(valid_miniml_file, valid_template_file):
     """Test XML validation."""
-    extractor = GeoMetadataExtractor(valid_miniml_file, valid_template_file)
+    extractor = GeoMetadataETL(valid_miniml_file, valid_template_file)
     try:
         extractor._validate_xml()
     except Exception as e:
@@ -87,7 +87,7 @@ def test_validate_xml(valid_miniml_file, valid_template_file):
 
 def test_extract_fields(valid_miniml_file, valid_template_file):
     """Test field extraction."""
-    extractor = GeoMetadataExtractor(valid_miniml_file, valid_template_file)
+    extractor = GeoMetadataETL(valid_miniml_file, valid_template_file)
     ns = {'geo': 'http://www.ncbi.nlm.nih.gov/geo/info/MINiML'}
     tree = etree.parse(valid_miniml_file)
     series_elem = tree.find(".//geo:Series", namespaces=ns)
@@ -103,7 +103,7 @@ def test_extract_fields(valid_miniml_file, valid_template_file):
 
 def test_pre_insert_series_id(db_session, valid_miniml_file, valid_template_file):
     """Test pre-inserting SeriesID."""
-    extractor = GeoMetadataExtractor(valid_miniml_file, valid_template_file)
+    extractor = GeoMetadataETL(valid_miniml_file, valid_template_file)
     series_id = "GSE123456"
 
     try:
@@ -117,7 +117,7 @@ def test_pre_insert_series_id(db_session, valid_miniml_file, valid_template_file
 
 def test_update_series_sample_count(db_session, valid_miniml_file, valid_template_file):
     """Test updating Series SampleCount."""
-    extractor = GeoMetadataExtractor(valid_miniml_file, valid_template_file)
+    extractor = GeoMetadataETL(valid_miniml_file, valid_template_file)
     series_id = "GSE123456"
 
     # Pre-insert the SeriesID
@@ -137,8 +137,8 @@ def test_update_series_sample_count(db_session, valid_miniml_file, valid_templat
 def test_parse_and_stream(db_session, valid_miniml_file, valid_template_file, engine):
     """Test parsing and streaming metadata."""
     # Mock the `get_postgres_engine` method to return the in-memory SQLite engine
-    with patch("pipeline.geo_pipeline.geo_metadata_extractor.get_postgres_engine", return_value=engine):
-        extractor = GeoMetadataExtractor(valid_miniml_file, valid_template_file)
+    with patch("pipeline.geo_pipeline.geo_metadata_etl.get_postgres_engine", return_value=engine):
+        extractor = GeoMetadataETL(valid_miniml_file, valid_template_file)
         extractor.parse_and_stream()
 
         # Verify series metadata

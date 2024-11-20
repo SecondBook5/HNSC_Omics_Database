@@ -1,4 +1,4 @@
-# File: pipeline/geo_pipeline/geo_metadata_extractor.py
+# File: pipeline/geo_pipeline/geo_metadata_etl.py
 import logging
 import os
 import json
@@ -13,9 +13,11 @@ from db.schema.metadata_schema import DatasetSeriesMetadata, DatasetSampleMetada
 from config.logger_config import configure_logger
 
 
-class GeoMetadataExtractor:
+class GeoMetadataETL:
     """
-    Class for extracting GEO metadata from MINiML files and streaming it to the database.
+    Handles the extraction, transformation, and loading (ETL) of GEO metadata
+    from XML files into a database, including logging and error handling.
+
 
     This class provides functionality to parse GEO metadata from MINiML XML files,
     validate the extracted metadata, and insert it into a PostgreSQL database. The class
@@ -319,5 +321,5 @@ if __name__ == "__main__":
     FILE_PATH = "../../resources/data/metadata/geo_metadata/raw_metadata/GSE112026_family.xml"
     TEMPLATE_PATH = "../../resources/geo_tag_template.json"
 
-    extractor = GeoMetadataExtractor(file_path=FILE_PATH, template_path=TEMPLATE_PATH, debug_mode=True)
+    extractor = GeoMetadataETL(file_path=FILE_PATH, template_path=TEMPLATE_PATH, debug_mode=True)
     extractor.parse_and_stream()
