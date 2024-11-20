@@ -1,196 +1,159 @@
 import pytest
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy import create_engine
+from unittest.mock import patch
 from pipeline.geo_pipeline.geo_metadata_extractor import GeoMetadataExtractor
+from db.schema.metadata_schema import DatasetSeriesMetadata, DatasetSampleMetadata
 from lxml import etree
 import json
-import os
 
-# Fixture for minimal valid XML
+
+# Mock database connection URL
+TEST_DB_URL = "sqlite:///:memory:"
+
+@pytest.fixture(scope="session")
+def engine():
+    """Fixture to set up an SQLite in-memory database engine."""
+    return create_engine(TEST_DB_URL, connect_args={"check_same_thread": False})
+
+
+@pytest.fixture(scope="function")
+def db_session(engine):
+    """Fixture to set up an SQLite session."""
+    DatasetSeriesMetadata.metadata.create_all(engine)
+    DatasetSampleMetadata.metadata.create_all(engine)
+    Session = sessionmaker(bind=engine)
+    session = Session()
+    yield session
+    session.close()
+    DatasetSeriesMetadata.metadata.drop_all(engine)
+    DatasetSampleMetadata.metadata.drop_all(engine)
+
+
 @pytest.fixture
-def minimal_xml_file(tmp_path):
-    """Creates a minimal valid XML file for testing."""
+def valid_miniml_file(tmp_path):
+    """Fixture to create a valid MINiML file for testing."""
     content = """
     <MINiML xmlns="http://www.ncbi.nlm.nih.gov/geo/info/MINiML">
         <Series>
-            <Accession>GSE112026</Accession>
             <Title>Test Series</Title>
-            <Status>
-                <Submission-Date>2021-01-01</Submission-Date>
-                <Last-Update-Date>2021-02-01</Last-Update-Date>
-            </Status>
-            <Pubmed-ID>123456</Pubmed-ID>
-            <Summary>Test Summary</Summary>
-            <Overall-Design>Test Design</Overall-Design>
+            <Accession database="GEO">GSE123456</Accession>
         </Series>
-        <Sample>
-            <Accession>GSM123456</Accession>
+        <Sample iid="GSM123456">
             <Title>Test Sample</Title>
-            <Status>
-                <Submission-Date>2021-01-01</Submission-Date>
-                <Last-Update-Date>2021-02-01</Last-Update-Date>
-            </Status>
-            <Channel>
-                <Organism>Homo sapiens</Organism>
-                <Characteristics tag="Gender">Male</Characteristics>
-                <Characteristics tag="Age">30</Characteristics>
-            </Channel>
-            <Relation type="BioSample" target="SAMN12345678"/>
+            <Accession database="GEO">GSM123456</Accession>
+            <Characteristics tag="test-tag">Test Value</Characteristics>
         </Sample>
     </MINiML>
     """
-    file_path = tmp_path / "minimal.xml"
+    file_path = tmp_path / "GSE123456_family.xml"
     file_path.write_text(content)
     return str(file_path)
 
-# Fixture for complex XML
-@pytest.fixture
-def complex_xml_file(tmp_path):
-    """Creates a complex XML file with missing and unexpected fields."""
-    content = """
-    <MINiML xmlns="http://www.ncbi.nlm.nih.gov/geo/info/MINiML">
-        <Series>
-            <Accession>GSE999999</Accession>
-            <Title>Complex Test Series</Title>
-            <Status>
-                <Submission-Date>2022-01-01</Submission-Date>
-            </Status>
-        </Series>
-        <Sample>
-            <Accession>GSM999999</Accession>
-            <Title>Complex Test Sample</Title>
-            <Channel>
-                <Organism>Mus musculus</Organism>
-                <Characteristics tag="Weight">20g</Characteristics>
-            </Channel>
-        </Sample>
-    </MINiML>
-    """
-    file_path = tmp_path / "complex.xml"
-    file_path.write_text(content)
-    return str(file_path)
 
-# Fixture for a valid template
 @pytest.fixture
-def template_json(tmp_path):
-    """Creates a valid JSON template file."""
-    content = {
+def valid_template_file(tmp_path):
+    """Fixture to create a valid template file for testing."""
+    template_content = {
         "Series": {
-            "SeriesID": "geo:Accession",
-            "Title": "geo:Title",
-            "SubmissionDate": "geo:Status/geo:Submission-Date",
-            "LastUpdateDate": "geo:Status/geo:Last-Update-Date",
-            "PubMedID": "geo:Pubmed-ID",
-            "Summary": "geo:Summary",
-            "OverallDesign": "geo:Overall-Design",
-            "Relations": "geo:Relation",
-            "SupplementaryData": "geo:Supplementary-Data"
+            "Title": ".//geo:Title",
+            "SeriesID": ".//geo:Accession[@database='GEO']/text()"
         },
         "Sample": {
-            "SampleID": "geo:Accession",
-            "Title": "geo:Title",
-            "SubmissionDate": "geo:Status/geo:Submission-Date",
-            "LastUpdateDate": "geo:Status/geo:Last-Update-Date",
-            "Organism": "geo:Channel/geo:Organism",
-            "Characteristics": "geo:Channel/geo:Characteristics",
-            "Relations": "geo:Relation",
-            "SupplementaryData": "geo:Supplementary-Data"
+            "SampleID": ".//geo:Accession[@database='GEO']/text()",
+            "Title": ".//geo:Title",
+            "Characteristics": ".//geo:Characteristics"
         }
     }
-    file_path = tmp_path / "template.json"
-    file_path.write_text(json.dumps(content))
-    return str(file_path)
+    template_path = tmp_path / "template.json"
+    template_path.write_text(json.dumps(template_content))
+    return str(template_path)
 
-# Test for valid series extraction
-def test_valid_series_extraction(minimal_xml_file, template_json):
-    """Tests valid series metadata extraction."""
-    extractor = GeoMetadataExtractor(file_path=minimal_xml_file, template_path=template_json)
-    series_data = []
+
+def test_initialization(valid_miniml_file, valid_template_file):
+    """Test GeoMetadataExtractor initialization."""
+    extractor = GeoMetadataExtractor(valid_miniml_file, valid_template_file, debug_mode=True)
+    assert extractor.file_path == valid_miniml_file
+    assert extractor.template_path == valid_template_file
+    assert extractor.debug_mode is True
+
+def test_validate_xml(valid_miniml_file, valid_template_file):
+    """Test XML validation."""
+    extractor = GeoMetadataExtractor(valid_miniml_file, valid_template_file)
+    try:
+        extractor._validate_xml()
+    except Exception as e:
+        pytest.fail(f"XML validation failed with error: {e}")
+
+def test_extract_fields(valid_miniml_file, valid_template_file):
+    """Test field extraction."""
+    extractor = GeoMetadataExtractor(valid_miniml_file, valid_template_file)
     ns = {'geo': 'http://www.ncbi.nlm.nih.gov/geo/info/MINiML'}
+    tree = etree.parse(valid_miniml_file)
+    series_elem = tree.find(".//geo:Series", namespaces=ns)
+    sample_elem = tree.find(".//geo:Sample", namespaces=ns)
 
-    context = etree.iterparse(minimal_xml_file, events=("start", "end"), tag="{http://www.ncbi.nlm.nih.gov/geo/info/MINiML}Series")
-    for event, elem in context:
-        if event == "end":
-            data = extractor._process_series_data(elem, ns)
-            if data:
-                series_data.append(data)
-            elem.clear()
+    series_fields = extractor._extract_fields(series_elem, extractor.template['Series'], ns)
+    sample_fields = extractor._extract_fields(sample_elem, extractor.template['Sample'], ns)
 
-    assert len(series_data) == 1
-    assert series_data[0]['SeriesID'] == "GSE112026"
-    assert series_data[0]['Title'] == "Test Series"
+    assert series_fields['Title'] == "Test Series"
+    assert series_fields['SeriesID'] == "GSE123456"
+    assert sample_fields['SampleID'] == "GSM123456"
+    assert sample_fields['Characteristics'] == [{'tag': 'test-tag', 'value': 'Test Value'}]
 
-# Test for valid sample extraction
-def test_valid_sample_extraction(minimal_xml_file, template_json):
-    """Tests valid sample metadata extraction."""
-    extractor = GeoMetadataExtractor(file_path=minimal_xml_file, template_path=template_json)
-    sample_data = []
-    ns = {'geo': 'http://www.ncbi.nlm.nih.gov/geo/info/MINiML'}
+def test_pre_insert_series_id(db_session, valid_miniml_file, valid_template_file):
+    """Test pre-inserting SeriesID."""
+    extractor = GeoMetadataExtractor(valid_miniml_file, valid_template_file)
+    series_id = "GSE123456"
 
-    context = etree.iterparse(minimal_xml_file, events=("start", "end"), tag="{http://www.ncbi.nlm.nih.gov/geo/info/MINiML}Sample")
-    for event, elem in context:
-        if event == "end":
-            data = extractor._process_sample_data(elem, ns)
-            if data:
-                sample_data.append(data)
-            elem.clear()
+    try:
+        extractor._pre_insert_series_id(db_session, series_id)
+    except Exception as e:
+        pytest.fail(f"Pre-inserting SeriesID failed with error: {e}")
 
-    assert len(sample_data) == 1
-    assert sample_data[0]['SampleID'] == "GSM123456"
-    assert sample_data[0]['Characteristics']['Gender'] == "Male"
-    assert sample_data[0]['Characteristics']['Age'] == "30"
+    result = db_session.query(DatasetSeriesMetadata).filter_by(SeriesID=series_id).first()
+    assert result is not None
+    assert result.SeriesID == series_id
 
-# Test for missing fields in XML
-def test_missing_fields_in_xml(complex_xml_file, template_json):
-    """Tests handling of missing fields in XML."""
-    extractor = GeoMetadataExtractor(file_path=complex_xml_file, template_path=template_json)
-    sample_data = []
-    ns = {'geo': 'http://www.ncbi.nlm.nih.gov/geo/info/MINiML'}
+def test_update_series_sample_count(db_session, valid_miniml_file, valid_template_file):
+    """Test updating Series SampleCount."""
+    extractor = GeoMetadataExtractor(valid_miniml_file, valid_template_file)
+    series_id = "GSE123456"
 
-    context = etree.iterparse(complex_xml_file, events=("start", "end"), tag="{http://www.ncbi.nlm.nih.gov/geo/info/MINiML}Sample")
-    for event, elem in context:
-        if event == "end":
-            data = extractor._process_sample_data(elem, ns)
-            if data:
-                sample_data.append(data)
-            elem.clear()
+    # Pre-insert the SeriesID
+    extractor._pre_insert_series_id(db_session, series_id)
 
-    assert len(sample_data) == 1
-    assert sample_data[0]['SampleID'] == "GSM999999"
-    assert sample_data[0]['Characteristics'].get('Weight') == "20g"
+    # Update the SampleCount
+    sample_count = 10
+    try:
+        extractor._update_series_sample_count(db_session, series_id, sample_count)
+    except Exception as e:
+        pytest.fail(f"Updating Series SampleCount failed with error: {e}")
 
-# Test for invalid XML structure
-def test_invalid_xml_structure(template_json):
-    """Tests handling of invalid XML structure."""
-    invalid_xml = "<Invalid><UnclosedTag></Invalid"
-    with pytest.raises(Exception):
-        extractor = GeoMetadataExtractor(file_path="invalid.xml", template_path=template_json)
+    result = db_session.query(DatasetSeriesMetadata).filter_by(SeriesID=series_id).first()
+    assert result is not None
+    assert result.SampleCount == sample_count
 
-# Test for unexpected fields
-def test_unexpected_fields_in_xml(complex_xml_file, template_json):
-    """Tests handling of unexpected fields in XML."""
-    extractor = GeoMetadataExtractor(file_path=complex_xml_file, template_path=template_json)
-    series_data = []
-    ns = {'geo': 'http://www.ncbi.nlm.nih.gov/geo/info/MINiML'}
+def test_parse_and_stream(db_session, valid_miniml_file, valid_template_file, engine):
+    """Test parsing and streaming metadata."""
+    # Mock the `get_postgres_engine` method to return the in-memory SQLite engine
+    with patch("pipeline.geo_pipeline.geo_metadata_extractor.get_postgres_engine", return_value=engine):
+        extractor = GeoMetadataExtractor(valid_miniml_file, valid_template_file)
+        extractor.parse_and_stream()
 
-    context = etree.iterparse(complex_xml_file, events=("start", "end"), tag="{http://www.ncbi.nlm.nih.gov/geo/info/MINiML}Series")
-    for event, elem in context:
-        if event == "end":
-            data = extractor._process_series_data(elem, ns)
-            if data:
-                series_data.append(data)
-            elem.clear()
+        # Verify series metadata
+        series = db_session.query(DatasetSeriesMetadata).filter_by(SeriesID="GSE123456").first()
+        assert series is not None, "Series metadata was not found in the database."
+        assert series.Title == "Test Series"
 
-    assert len(series_data) == 1
-    assert series_data[0]['SeriesID'] == "GSE999999"
-    assert series_data[0]['LastUpdateDate'] is None  # Field missing in XML
+        # Verify sample metadata
+        sample = db_session.query(DatasetSampleMetadata).filter_by(SampleID="GSM123456").first()
+        assert sample is not None, "Sample metadata was not found in the database."
+        assert sample.Title == "Test Sample"
 
-# Test for invalid template path
-def test_invalid_template_path(minimal_xml_file):
-    """Tests handling of invalid template path."""
-    with pytest.raises(Exception):
-        GeoMetadataExtractor(file_path=minimal_xml_file, template_path="nonexistent_template.json")
-
-# Test for invalid file path
-def test_invalid_file_path(template_json):
-    """Tests handling of invalid file path."""
-    with pytest.raises(Exception):
-        GeoMetadataExtractor(file_path="nonexistent.xml", template_path=template_json)
+        # Ensure Characteristics is already a list
+        expected_characteristics = [{'tag': 'test-tag', 'value': 'Test Value'}]
+        if isinstance(sample.Characteristics, str):
+            assert json.loads(sample.Characteristics) == expected_characteristics
+        else:
+            assert sample.Characteristics == expected_characteristics
