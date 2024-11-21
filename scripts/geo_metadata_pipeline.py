@@ -1,14 +1,14 @@
 # Import necessary modules for pipeline execution
-import os  # For handling file and directory operations
-import logging  # For structured logging of pipeline events
-from pipeline.geo_pipeline.geo_metadata_downloader import GeoMetadataDownloader  # For downloading GEO files
-from pipeline.geo_pipeline.geo_metadata_etl import GeoMetadataETL  # For extracting metadata
-from pipeline.geo_pipeline.geo_metadata_uploader import GeoMetadataUploader  # For uploading metadata to the database
-from config.db_config import get_session_context  # For managing database session
-from utils.connection_checker import DatabaseConnectionChecker  # For validating database connections
+import os  # For file and directory operations
+from pipeline.geo_pipeline.geo_metadata_downloader import GeoMetadataDownloader  # For downloading GEO metadata
+from pipeline.geo_pipeline.geo_metadata_etl import GeoMetadataETL  # For extracting metadata from files
+from pipeline.geo_pipeline.geo_file_handler import GeoFileHandler  # For handling file-related operations
+from config.db_config import get_session_context  # For managing database sessions
+from utils.connection_checker import DatabaseConnectionChecker  # For checking database connections
 from utils.exceptions import MissingForeignKeyError  # Custom exception for missing foreign key errors
-from concurrent.futures import ThreadPoolExecutor  # For parallel execution of tasks
-from db.schema.metadata_schema import DatasetSeriesMetadata, DatasetSampleMetadata  # For database models
+from concurrent.futures import ThreadPoolExecutor  # For parallel task execution
+from config.logger_config import configure_logger  # Centralized logger configuration
+from db.schema.metadata_schema import DatasetSeriesMetadata, DatasetSampleMetadata  # Database models for validation
 
 # ---------------- Configuration ----------------
 
@@ -18,8 +18,6 @@ BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 # Define the directory for log files
 LOG_DIR = os.path.join(BASE_DIR, "../logs")
 
-# Define the path for the log file
-LOG_FILE = os.path.join(LOG_DIR, "geo_metadata_pipeline.log")
 # Define the directory for output metadata files
 OUTPUT_DIR = os.path.join(BASE_DIR, "../resources/data/metadata/geo_metadata/raw_metadata")
 
@@ -29,18 +27,19 @@ GEO_IDS_FILE = os.path.join(BASE_DIR, "../resources/geo_ids.txt")
 # Define the path to the metadata extraction template
 EXTRACTION_TEMPLATE = os.path.join(BASE_DIR, "../resources/geo_tag_template.json")
 
-# Ensure the log and output directories exist, creating them if necessary
-os.makedirs(LOG_DIR, exist_ok=True)
-os.makedirs(OUTPUT_DIR, exist_ok=True)
+# Ensure that the log and output directories exist, creating them if necessary
+os.makedirs(LOG_DIR, exist_ok=True)  # Create the log directory if it doesn't exist
+os.makedirs(OUTPUT_DIR, exist_ok=True)  # Create the output directory if it doesn't exist
 
-# Configure logging for the pipeline
-logging.basicConfig(
-    level=logging.INFO,  # Set log level to INFO
-    filename=LOG_FILE,  # Log messages will be written to this file
-    filemode="w",  # Overwrite the log file on each run
-    format="%(asctime)s - %(levelname)s - %(message)s"  # Define the log message format
+# Configure centralized logger for the pipeline
+logger = configure_logger(
+    name="GeoMetadataPipeline",  # Logger name
+    log_dir=LOG_DIR,  # Directory for log files
+    log_file="geo_metadata_pipeline.log",  # Log file name
+    level="INFO",  # Logging level
+    output="both"  # Log to both console and file
 )
-logger = logging.getLogger("geo_metadata_pipeline")  # Create a logger for this script
+
 
 # ---------------- GEO Metadata Pipeline ----------------
 
@@ -48,144 +47,127 @@ logger = logging.getLogger("geo_metadata_pipeline")  # Create a logger for this 
 class GeoMetadataPipeline:
     """
     Pipeline for processing GEO metadata.
-    Handles downloading, extraction, logging, and uploading metadata.
+    Handles downloading, extraction, logging, and cleanup of metadata.
     """
 
     def __init__(self, geo_ids: list):
-        # Initialize the list of GEO IDs to process
-        self.geo_ids = geo_ids
+        # Validate that geo_ids is a non-empty list
+        if not geo_ids or not isinstance(geo_ids, list):
+            raise ValueError("geo_ids must be a non-empty list of GEO IDs.")
+        self.geo_ids = geo_ids  # Assign the list of GEO IDs to an instance variable
 
-        # Create an instance of the downloader for downloading GEO files
-        self.downloader = GeoMetadataDownloader(output_dir=OUTPUT_DIR, debug=True, logger=logger)
+        # Validate that the extraction template exists
+        if not os.path.exists(EXTRACTION_TEMPLATE):
+            raise FileNotFoundError(f"Metadata extraction template not found: {EXTRACTION_TEMPLATE}")
 
-        # Create an instance of the uploader for uploading metadata to the database
-        self.uploader = GeoMetadataUploader()
+        # Initialize a file handler for managing GEO files
+        self.file_handler = GeoFileHandler(geo_ids_file=GEO_IDS_FILE, output_dir=OUTPUT_DIR, compress_files=True)
 
-        # Define the path to the metadata extraction template
-        self.extractor_template = EXTRACTION_TEMPLATE
+        # Initialize the downloader for GEO metadata files
+        try:
+            self.downloader = GeoMetadataDownloader(output_dir=OUTPUT_DIR, debug=True, file_handler=self.file_handler)
+        except Exception as e:
+            logger.critical(f"Failed to initialize GeoMetadataDownloader: {e}")
+            raise
 
-        # Create an instance of the connection checker for validating database connections
+        # Initialize the connection checker for validating database connections
         self.connection_checker = DatabaseConnectionChecker()
 
     def check_connections(self):
         """Ensures database connections are valid before proceeding."""
-        # Check the PostgreSQL connection using the connection checker
-        if not self.connection_checker.check_postgresql_connection():
-            raise RuntimeError("PostgreSQL connection failed. Aborting pipeline.")
-        logger.info("Database connections verified.")
-
-    def log_operation(self, geo_id, status, message, file_names=None):
-        """Logs operation status to the geo_metadata_log table."""
         try:
-            # Open a database session and log the operation
-            with get_session_context() as session:
-                self.uploader.log_metadata_operation(session, geo_id, status, message, file_names)
+            # Verify the PostgreSQL connection
+            if not self.connection_checker.check_postgresql_connection():
+                raise RuntimeError("PostgreSQL connection failed. Aborting pipeline.")
+            logger.info("Database connections verified.")  # Log successful connection verification
         except Exception as e:
-            # Log an error if the operation logging fails
-            logger.error(f"Failed to log operation for GEO ID {geo_id}: {e}")
-            raise
-
-    def validate_upload(self, geo_id, series_metadata, sample_metadata):
-        """
-        Validates that all extracted metadata has been uploaded to the database.
-        """
-        try:
-            # Open a database session to validate uploaded data
-            with get_session_context() as session:
-                # Validate that each series in the metadata exists in the database
-                for series in series_metadata:
-                    series_id = series["SeriesID"]
-                    result = session.query(DatasetSeriesMetadata).filter_by(SeriesID=series_id).first()
-                    if not result:
-                        raise RuntimeError(f"Series metadata for SeriesID {series_id} not found in the database.")
-
-                # Validate that each sample in the metadata exists in the database
-                for sample in sample_metadata:
-                    sample_id = sample["SampleID"]
-                    result = session.query(DatasetSampleMetadata).filter_by(SampleID=sample_id).first()
-                    if not result:
-                        raise RuntimeError(f"Sample metadata for SampleID {sample_id} not found in the database.")
-
-            # Log validation success
-            logger.info(f"Validation successful for GEO ID {geo_id}.")
-        except Exception as e:
-            # Log and raise validation errors
-            logger.error(f"Validation failed for GEO ID {geo_id}: {e}")
+            # Log critical error if the connection check fails
+            logger.critical(f"Database connection check failed: {e}")
             raise
 
     def download_extract_upload(self, geo_id: str):
         """
-        Processes a single GEO ID through download, extraction, and upload.
+        Processes a single GEO ID through download, extraction, logging, and cleanup.
         """
+        # Validate that geo_id is a non-empty string
+        if not geo_id or not isinstance(geo_id, str):
+            logger.error("Invalid GEO ID provided. GEO ID must be a non-empty string.")
+            raise ValueError("GEO ID must be a non-empty string.")
+
         try:
-            # Step 1: Download the GEO file for the given GEO ID
+            # Step 1: Download the GEO metadata file
             file_path = self.downloader.download_file(geo_id)
             if not file_path or not os.path.exists(file_path):
-                raise RuntimeError(f"File not found after download for GEO ID {geo_id}.")
-            # Log the successful download operation
-            self.log_operation(geo_id, "downloaded", f"File downloaded to {file_path}", [file_path])
+                raise FileNotFoundError(f"File not found after download for GEO ID {geo_id}.")
+            logger.info(f"Successfully downloaded file for GEO ID {geo_id}.")
 
-            # Step 2: Extract metadata from the downloaded file
-            extractor = GeoMetadataETL(file_path=file_path, template_path=self.extractor_template, debug_mode=True)
-            metadata = extractor.parse()
-            # Log the successful metadata extraction operation
-            self.log_operation(geo_id, "extracted", "Metadata extracted successfully.")
+            # Step 2: Extract and upload metadata from the file
+            extractor = GeoMetadataETL(
+                file_path=file_path,
+                template_path=EXTRACTION_TEMPLATE,
+                debug_mode=True,
+                file_handler=self.file_handler
+            )
+            extractor.parse_and_stream()  # Parse and upload metadata to the database
+            logger.info(f"Successfully extracted and uploaded metadata for GEO ID {geo_id}.")
 
-            # Step 3: Extract series and sample metadata
-            series_metadata = metadata.get("series", [])
-            sample_metadata = metadata.get("samples", [])
+            # Step 3: Clean up the downloaded files
+            self.file_handler.clean_files(geo_id)
+            logger.info(f"Cleaned up files for GEO ID {geo_id}.")  # Log cleanup success
 
-            # Step 4: Upload extracted metadata to the database
-            with get_session_context() as session:
-                if series_metadata:
-                    self.uploader.upload_series_metadata(series_metadata)
-                if sample_metadata:
-                    self.uploader.upload_sample_metadata(sample_metadata)
-
-            # Step 5: Validate that metadata has been uploaded successfully
-            self.validate_upload(geo_id, series_metadata, sample_metadata)
-
-            # Log overall success for processing the GEO ID
-            self.log_operation(geo_id, "uploaded", "Metadata uploaded and validated successfully.")
-            logger.info(f"Successfully processed GEO ID {geo_id}.")
         except MissingForeignKeyError as mfe:
-            # Handle foreign key errors during processing
+            # Handle missing foreign key errors
             logger.error(f"Foreign key error while processing GEO ID {geo_id}: {mfe}")
-            self.log_operation(geo_id, "failed", f"Foreign key error: {mfe}")
+            self.file_handler.log_processed(geo_id)  # Log that processing was completed
+            self.file_handler.log_download(geo_id, [f"Error: {mfe}"])  # Log the error
+        except FileNotFoundError as fnf:
+            # Handle file-related errors
+            logger.error(f"File operation failed for GEO ID {geo_id}: {fnf}")
+            self.file_handler.log_download(geo_id, [f"Error: {fnf}"])
+        except ValueError as ve:
+            # Handle invalid values
+            logger.error(f"Value error encountered for GEO ID {geo_id}: {ve}")
+            self.file_handler.log_download(geo_id, [f"Error: {ve}"])
         except Exception as e:
-            # Handle general errors during processing
-            logger.error(f"Failed to process GEO ID {geo_id}: {e}")
-            self.log_operation(geo_id, "failed", str(e))
-            raise
+            # Handle any other unexpected errors
+            logger.error(f"Unexpected error processing GEO ID {geo_id}: {e}")
+            self.file_handler.log_download(geo_id, [f"Error: {e}"])
 
     def execute_pipeline(self):
         """Executes the pipeline for all GEO IDs in parallel."""
-        # Use a ThreadPoolExecutor for parallel processing
-        with ThreadPoolExecutor() as executor:
-            # Submit download, extract, and upload tasks for each GEO ID
-            futures = {executor.submit(self.download_extract_upload, geo_id): geo_id for geo_id in self.geo_ids}
-            for future in futures:
-                geo_id = futures[future]
-                try:
-                    # Process the result of each future to check for errors
-                    future.result()
-                except Exception as e:
-                    # Log an error for any GEO ID that fails processing
-                    logger.error(f"Error processing GEO ID {geo_id}: {e}")
+        try:
+            # Initialize the log table for GEO metadata
+            self.file_handler.initialize_log_table()
+
+            # Use a ThreadPoolExecutor to process GEO IDs in parallel
+            with ThreadPoolExecutor() as executor:
+                # Submit each GEO ID as a separate task
+                futures = {executor.submit(self.download_extract_upload, geo_id): geo_id for geo_id in self.geo_ids}
+                for future in futures:
+                    geo_id = futures[future]  # Retrieve the GEO ID for the current task
+                    try:
+                        future.result()  # Wait for the task to complete
+                    except Exception as e:
+                        # Log any errors encountered during processing
+                        logger.error(f"Error processing GEO ID {geo_id}: {e}")
+        except Exception as e:
+            # Log critical errors that occur during the pipeline execution
+            logger.critical(f"Pipeline execution encountered a critical failure: {e}")
+            raise
 
 
 # ---------------- Execution ----------------
 
 if __name__ == "__main__":
     try:
-        # Create an instance of the database connection checker
+        # Initialize the connection checker
         checker = DatabaseConnectionChecker()
 
         # Verify that PostgreSQL connection is available
         if not checker.check_postgresql_connection():
             raise RuntimeError("Database connection failed. Aborting pipeline execution.")
 
-        # Check if the GEO IDs file exists
+        # Ensure the GEO IDs file exists
         if not os.path.exists(GEO_IDS_FILE):
             raise FileNotFoundError(f"GEO IDs file not found: {GEO_IDS_FILE}")
 
@@ -193,20 +175,30 @@ if __name__ == "__main__":
         with open(GEO_IDS_FILE, "r") as f:
             geo_ids = [line.strip() for line in f if line.strip()]
 
-        # Raise an error if the GEO IDs list is empty
+        # Ensure the GEO IDs list is not empty
         if not geo_ids:
             raise ValueError("No GEO IDs found in the file.")
 
-        # Log the number of GEO IDs to process
-        logger.info(f"Processing {len(geo_ids)} GEO IDs.")
+        logger.info(f"Processing {len(geo_ids)} GEO IDs.")  # Log the number of GEO IDs
 
-        # Create an instance of the pipeline and execute it
+        # Initialize the pipeline with the list of GEO IDs
         pipeline = GeoMetadataPipeline(geo_ids=geo_ids)
 
-        # Check database connections
+        # Check database connections before execution
         pipeline.check_connections()
+
+        # Execute the pipeline
         pipeline.execute_pipeline()
+
+    except MissingForeignKeyError as mfe:
+        logger.critical(f"Foreign key error encountered: {mfe}")
+    except FileNotFoundError as fnf_error:
+        logger.critical(f"File not found: {fnf_error}")
+    except ValueError as value_error:
+        logger.critical(f"Value error: {value_error}")
+    except RuntimeError as runtime_error:
+        logger.critical(f"Runtime error: {runtime_error}")
     except Exception as e:
-        # Log a critical error if the pipeline fails
-        logger.critical(f"Pipeline execution failed: {e}")
+        # Log any unexpected errors during execution
+        logger.critical(f"Unexpected error during pipeline execution: {e}")
         exit(1)
