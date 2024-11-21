@@ -2,7 +2,7 @@
 import os  # For handling file and directory operations
 import logging  # For structured logging of pipeline events
 from pipeline.geo_pipeline.geo_metadata_downloader import GeoMetadataDownloader  # For downloading GEO files
-from pipeline.geo_pipeline.geo_metadata_etl import GeoMetadataExtractor  # For extracting metadata
+from pipeline.geo_pipeline.geo_metadata_etl import GeoMetadataETL  # For extracting metadata
 from pipeline.geo_pipeline.geo_metadata_uploader import GeoMetadataUploader  # For uploading metadata to the database
 from config.db_config import get_session_context  # For managing database session
 from utils.connection_checker import DatabaseConnectionChecker  # For validating database connections
@@ -126,7 +126,7 @@ class GeoMetadataPipeline:
             self.log_operation(geo_id, "downloaded", f"File downloaded to {file_path}", [file_path])
 
             # Step 2: Extract metadata from the downloaded file
-            extractor = GeoMetadataExtractor(file_path=file_path, template_path=self.extractor_template, debug_mode=True)
+            extractor = GeoMetadataETL(file_path=file_path, template_path=self.extractor_template, debug_mode=True)
             metadata = extractor.parse()
             # Log the successful metadata extraction operation
             self.log_operation(geo_id, "extracted", "Metadata extracted successfully.")

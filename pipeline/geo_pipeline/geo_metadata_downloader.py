@@ -6,7 +6,7 @@ import requests  # For making HTTP requests
 import logging
 from typing import Optional, List  # For type hints
 from config.logger_config import configure_logger  # Import centralized logger configuration
-
+from pipeline.geo_pipeline.geo_file_handler import GeoFileHandler  # Import GeoFileHandler
 
 class GeoMetadataDownloader:
     """
@@ -17,14 +17,16 @@ class GeoMetadataDownloader:
         output_dir (str): Directory to save downloaded files.
         base_url (str): Base URL for GEO data repository.
         logger (logging.Logger): Logger instance for debug and info output.
+        file_handler (GeoFileHandler): Handles logging and file-related operations.
     """
 
-    def __init__(self, output_dir: str, debug: bool = False) -> None:
+    def __init__(self, output_dir: str, file_handler: GeoFileHandler, debug: bool = False) -> None:
         """
-        Initializes GeoMetadataDownloader with output directory and optional debug flag.
+        Initializes GeoMetadataDownloader with output directory, file handler, and optional debug flag.
 
         Args:
             output_dir (str): Directory to save downloaded files.
+            file_handler (GeoFileHandler): Handles logging and file-related operations.
             debug (bool): Enables debug output if True.
         """
         # Validate that the output directory is provided
@@ -34,6 +36,9 @@ class GeoMetadataDownloader:
         # Ensure the output directory exists or create it
         os.makedirs(output_dir, exist_ok=True)
         self.output_dir = output_dir
+
+        # Set the file handler for logging and file cleanup
+        self.file_handler = file_handler
 
         # Base URL for constructing GEO file download links
         self.base_url: str = "https://ftp.ncbi.nlm.nih.gov/geo/series"
@@ -64,6 +69,8 @@ class GeoMetadataDownloader:
                 # Log success if the file was downloaded and extracted successfully
                 if extracted_path:
                     self.logger.info(f"Successfully processed {file_id}: {extracted_path}")
+                    # Log the download in the file handler
+                    self.file_handler.log_download(file_id, [os.path.basename(extracted_path)])
                 else:
                     # Log an error if the process failed for the current file
                     self.logger.error(f"Failed to process {file_id}")

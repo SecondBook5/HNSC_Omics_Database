@@ -11,6 +11,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from config.db_config import get_postgres_engine
 from db.schema.metadata_schema import DatasetSeriesMetadata, DatasetSampleMetadata
 from config.logger_config import configure_logger
+from pipeline.geo_pipeline.geo_file_handler import GeoFileHandler  # Import GeoFileHandler
 
 
 class GeoMetadataETL:
@@ -18,26 +19,18 @@ class GeoMetadataETL:
     Handles the extraction, transformation, and loading (ETL) of GEO metadata
     from XML files into a database, including logging and error handling.
 
-
     This class provides functionality to parse GEO metadata from MINiML XML files,
-    validate the extracted metadata, and insert it into a PostgreSQL database. The class
-    supports series-level and sample-level metadata, ensuring data integrity through
-    validation methods and logging errors for debugging.
-
-    Attributes:
-        file_path: Path to the GEO MINiML file.
-        template_path: Path to the JSON template for field mappings.
-        debug_mode: Enables detailed debug logging if True.
-        logger: Configured logger instance.
+    validate the extracted metadata, and insert it into a PostgreSQL database.
     """
 
-    def __init__(self, file_path: str, template_path: str, debug_mode: bool = False) -> None:
+    def __init__(self, file_path: str, template_path: str, file_handler: GeoFileHandler, debug_mode: bool = False) -> None:
         """
-        Initializes the GeoMetadataExtractor with file paths and logging settings.
+        Initializes the GeoMetadataETL with file paths, logging settings, and a file handler.
 
         Args:
             file_path (str): Path to the GEO XML file.
             template_path (str): Path to the JSON field mapping template.
+            file_handler (GeoFileHandler): Handles logging and file-related operations.
             debug_mode (bool): Enables detailed debug logging.
         """
         if not os.path.exists(file_path):
@@ -48,16 +41,18 @@ class GeoMetadataETL:
         self.file_path = file_path
         self.template_path = template_path
         self.debug_mode = debug_mode
+        self.file_handler = file_handler  # Assign the file handler instance
 
         self.logger = configure_logger(
-            name="GeoMetadataExtractor",
+            name="GeoMetadataETL",
             log_dir="./logs",
-            log_file="geo_metadata_extractor.log",
+            log_file="geo_metadata_etl.log",
             level=logging.DEBUG if debug_mode else logging.INFO,
             output="both"
         )
 
         self.template = self._load_template()
+
 
     def _load_template(self) -> Dict[str, Dict[str, str]]:
         """Loads the JSON template for XML field mappings."""
@@ -277,6 +272,13 @@ class GeoMetadataETL:
 
             # Commit all changes after parsing
             session.commit()
+
+            # Log the processing status
+            self.file_handler.log_processed(inferred_series_id)
+
+            # Clean up files after processing
+            self.file_handler.clean_files(inferred_series_id)
+
             self.logger.info("Metadata streaming completed successfully.")
 
         except Exception as e:
@@ -315,11 +317,3 @@ class GeoMetadataETL:
         except SQLAlchemyError as e:
             self.logger.error(f"Database error during Sample insertion: {e}")
             raise
-
-
-if __name__ == "__main__":
-    FILE_PATH = "../../resources/data/metadata/geo_metadata/raw_metadata/GSE112026_family.xml"
-    TEMPLATE_PATH = "../../resources/geo_tag_template.json"
-
-    extractor = GeoMetadataETL(file_path=FILE_PATH, template_path=TEMPLATE_PATH, debug_mode=True)
-    extractor.parse_and_stream()
