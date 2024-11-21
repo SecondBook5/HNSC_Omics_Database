@@ -224,7 +224,8 @@ class GeoMetadataETL:
             # Step 1: Ensure the SeriesID exists in the database
             try:
                 insert_query = insert(DatasetSeriesMetadata).values(
-                    SeriesID=inferred_series_id).on_conflict_do_nothing()
+                    SeriesID=inferred_series_id
+                ).on_conflict_do_nothing()
                 session.execute(insert_query)
                 session.commit()
                 self.logger.info(f"Ensured SeriesID {inferred_series_id} exists in dataset_series_metadata.")
@@ -234,6 +235,7 @@ class GeoMetadataETL:
 
             # Step 2: Initialize sample count
             sample_count = 0
+            uploaded_samples = set()  # Track uploaded samples to avoid redundancy
 
             # Parse the XML
             context = etree.iterparse(
@@ -255,16 +257,20 @@ class GeoMetadataETL:
 
                     self._stream_series_to_db(session, series_data)
                     self.logger.info(f"Series {series_data['SeriesID']} uploaded successfully.")
-                    elem.clear()
+                    elem.clear()  # Clear element memory
+                    del elem.getparent()[0]  # Remove parent references
 
                 elif event == "end" and elem.tag.endswith("Sample"):
                     # Process Sample metadata
                     sample_data = self._process_sample_data(elem, ns, inferred_series_id)
-                    if sample_data:
+                    sample_id = sample_data.get("SampleID")
+                    if sample_id and sample_id not in uploaded_samples:
                         self._stream_sample_to_db(session, sample_data)
+                        uploaded_samples.add(sample_id)
                         sample_count += 1  # Increment the sample count
-                        self.logger.info(f"Sample {sample_data['SampleID']} uploaded successfully.")
-                    elem.clear()
+                        self.logger.info(f"Sample {sample_id} uploaded successfully.")
+                    elem.clear()  # Clear element memory
+                    del elem.getparent()[0]  # Remove parent references
 
             # Step 3: Update the sample count in dataset_series_metadata
             self._update_series_sample_count(session, inferred_series_id, sample_count)

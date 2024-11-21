@@ -85,6 +85,38 @@ class GeoMetadataPipeline:
             logger.critical(f"Database connection check failed: {e}")
             raise
 
+    def validate_download(self, geo_id: str, file_path: str) -> None:
+        """Validates that the file was downloaded successfully."""
+        if not file_path or not os.path.exists(file_path):
+            raise FileNotFoundError(f"Validation failed: File not found after download for GEO ID {geo_id}.")
+        logger.info(f"Download validation successful for GEO ID {geo_id}.")
+
+    def validate_metadata_upload(self, geo_id: str) -> None:
+        """Validates that metadata has been uploaded successfully to the database."""
+        try:
+            with get_session_context() as session:
+                # Check if the SeriesID exists in the database
+                series_exists = session.query(DatasetSeriesMetadata).filter_by(SeriesID=geo_id).first() is not None
+                # Check if any Samples are associated with the SeriesID
+                samples_exist = session.query(DatasetSampleMetadata).filter_by(SeriesID=geo_id).count() > 0
+
+                if not series_exists or not samples_exist:
+                    raise RuntimeError(
+                        f"Metadata validation failed: Missing SeriesID or Samples for GEO ID {geo_id}."
+                    )
+        except Exception as e:
+            logger.error(f"Error during metadata upload validation for GEO ID {geo_id}: {e}")
+            raise
+        logger.info(f"Metadata upload validation successful for GEO ID {geo_id}.")
+
+    def validate_cleanup(self, geo_id: str) -> None:
+        """Validates that files have been cleaned successfully."""
+        geo_dir = os.path.join(OUTPUT_DIR, geo_id)
+        zip_file = f"{geo_dir}.zip"
+        if os.path.exists(geo_dir) or (self.file_handler.compress_files and not os.path.exists(zip_file)):
+            raise RuntimeError(f"Validation failed: Cleanup incomplete for GEO ID {geo_id}.")
+        logger.info(f"Cleanup validation successful for GEO ID {geo_id}.")
+
     def download_extract_upload(self, geo_id: str):
         """
         Processes a single GEO ID through download, extraction, logging, and cleanup.
@@ -97,9 +129,7 @@ class GeoMetadataPipeline:
         try:
             # Step 1: Download the GEO metadata file
             file_path = self.downloader.download_file(geo_id)
-            if not file_path or not os.path.exists(file_path):
-                raise FileNotFoundError(f"File not found after download for GEO ID {geo_id}.")
-            logger.info(f"Successfully downloaded file for GEO ID {geo_id}.")
+            self.validate_download(geo_id, file_path)  # Validate download success
 
             # Step 2: Extract and upload metadata from the file
             extractor = GeoMetadataETL(
@@ -109,11 +139,11 @@ class GeoMetadataPipeline:
                 file_handler=self.file_handler
             )
             extractor.parse_and_stream()  # Parse and upload metadata to the database
-            logger.info(f"Successfully extracted and uploaded metadata for GEO ID {geo_id}.")
+            self.validate_metadata_upload(geo_id)  # Validate metadata upload
 
             # Step 3: Clean up the downloaded files
             self.file_handler.clean_files(geo_id)
-            logger.info(f"Cleaned up files for GEO ID {geo_id}.")  # Log cleanup success
+            self.validate_cleanup(geo_id)  # Validate cleanup success
 
         except MissingForeignKeyError as mfe:
             # Handle missing foreign key errors
@@ -131,7 +161,7 @@ class GeoMetadataPipeline:
         except Exception as e:
             # Handle any other unexpected errors
             logger.error(f"Unexpected error processing GEO ID {geo_id}: {e}")
-            self.file_handler.log_download(geo_id, [f"Error: {e}"])
+            raise
 
     def execute_pipeline(self):
         """Executes the pipeline for all GEO IDs in parallel."""
