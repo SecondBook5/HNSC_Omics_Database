@@ -21,4 +21,4 @@ pydantic
 matplotlib
 seaborn
 gprofiler-official
-
+scanpy
