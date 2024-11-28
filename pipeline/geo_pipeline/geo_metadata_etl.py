@@ -256,88 +256,114 @@ class GeoMetadataETL:
         self.logger.info(f"Inferred SeriesID from filename: {inferred_series_id}")
 
         # Set up the database engine and session.
-        engine = get_postgres_engine()
-        Session = sessionmaker(bind=engine)
-        session = Session()
+        engine = get_postgres_engine()  # Get the database engine configured for PostgreSQL.
+        Session = sessionmaker(bind=engine)  # Create a session factory bound to the engine.
+        session = Session()  # Initialize a database session.
 
         # Define the XML namespace for parsing.
         ns = {'geo': 'http://www.ncbi.nlm.nih.gov/geo/info/MINiML'}
 
-        sample_count = 0  # Initialize sample count
+        # Initialize a counter to track the number of samples processed.
+        sample_count = 0
         try:
-            # Validate the XML structure to ensure the file is well-formed.
+            # Step 1: Validate the XML structure to ensure the file is well-formed.
             self._validate_xml()
             self.logger.info("Parsing and streaming metadata in a single pass...")
 
-            # Step 1: Ensure the SeriesID exists in the database.
+            # Step 2: Ensure the SeriesID exists in the database.
             try:
+                # Use an upsert query to insert or ensure the SeriesID exists.
                 insert_query = insert(DatasetSeriesMetadata).values(
                     SeriesID=inferred_series_id
-                ).on_conflict_do_nothing()  # Avoid duplicate insertions on conflict.
+                ).on_conflict_do_nothing()  # Avoid duplicate insertions.
                 session.execute(insert_query)
                 session.commit()
                 self.logger.info(f"Ensured SeriesID {inferred_series_id} exists in dataset_series_metadata.")
             except SQLAlchemyError as e:
+                # Log and raise an error if SeriesID insertion fails.
                 self.logger.error(f"Error ensuring SeriesID in database: {e}")
                 raise
 
-            # Step 2: Initialize variables for tracking uploaded samples.
-            uploaded_samples = set()  # Track uploaded samples to avoid redundancy
+            # Step 3: Fetch existing SampleIDs to avoid redundant uploads.
+            existing_samples = session.query(DatasetSampleMetadata.SampleID).filter_by(
+                SeriesID=inferred_series_id).all()
+            uploaded_samples = set(sample[0] for sample in existing_samples)  # Convert to a set for fast lookups.
 
-            # Step 3: Parse the XML file using iterparse for efficient memory usage.
+            # Step 4: Parse the XML file using iterparse for efficient memory usage.
             context = etree.iterparse(
                 self.file_path, events=("start", "end"),
                 tag=["{http://www.ncbi.nlm.nih.gov/geo/info/MINiML}Series",
                      "{http://www.ncbi.nlm.nih.gov/geo/info/MINiML}Sample"]
             )
 
+            # Step 5: Process Series and Sample elements from the XML.
             for event, elem in context:
                 if event == "end" and elem.tag.endswith("Series"):
-                    # Process Series metadata
+                    # Extract metadata for the Series element.
                     series_data = self._process_series_data(elem, ns)
                     if not series_data:
-                        # Fallback to inferred SeriesID if no data extracted
-                        series_data = {"SeriesID": inferred_series_id}
+                        series_data = {
+                            "SeriesID": inferred_series_id}  # Fallback to inferred SeriesID if no data extracted.
                     else:
-                        # Ensure SeriesID matches inferred SeriesID
-                        series_data["SeriesID"] = inferred_series_id
+                        series_data["SeriesID"] = inferred_series_id  # Ensure SeriesID matches the inferred value.
 
-                    # Stream Series metadata to the database.
-                    self._stream_series_to_db(session, series_data)
-                    self.logger.info(f"Series {series_data['SeriesID']} uploaded successfully.")
-                    elem.clear()  # Clear element memory
-                    del elem.getparent()[0]  # Remove parent references
+                    # Insert Series metadata into the database.
+                    try:
+                        self._stream_series_to_db(session, series_data)
+                        self.logger.info(f"Series {series_data['SeriesID']} uploaded successfully.")
+                    except SQLAlchemyError as e:
+                        # Log any database errors encountered during insertion.
+                        self.logger.error(f"Error inserting Series {series_data['SeriesID']}: {e}")
+
+                    # Clear memory for the current XML element and its parent.
+                    elem.clear()
+                    while elem.getparent() is not None:
+                        del elem.getparent()[0]
 
                 elif event == "end" and elem.tag.endswith("Sample"):
-                    # Process Sample metadata
+                    # Extract metadata for the Sample element.
                     sample_data = self._process_sample_data(elem, ns, inferred_series_id)
-                    sample_id = sample_data.get("SampleID")
-                    if sample_id and sample_id not in uploaded_samples:
-                        self._stream_sample_to_db(session, sample_data)  # Stream Sample data.
-                        uploaded_samples.add(sample_id)
-                        sample_count += 1  # Increment the sample count
-                        self.logger.info(f"Sample {sample_id} uploaded successfully.")
-                    elem.clear()  # Clear element memory
-                    del elem.getparent()[0]  # Remove parent references
+                    sample_id = sample_data.get("SampleID") if sample_data else None
 
-            # Step 4: Update the SampleCount field for the SeriesID.
+                    # Avoid processing samples that have already been uploaded.
+                    if sample_id and sample_id not in uploaded_samples:
+                        try:
+                            # Attempt to insert the Sample metadata into the database.
+                            result = session.execute(
+                                insert(DatasetSampleMetadata).values(sample_data).on_conflict_do_nothing()
+                            )
+                            if result.rowcount > 0:  # Log only if a new row was inserted.
+                                uploaded_samples.add(sample_id)
+                                sample_count += 1
+                                self.logger.info(f"Sample {sample_id} uploaded successfully.")
+                            else:
+                                # Log that the Sample already exists in the database.
+                                self.logger.debug(f"Sample {sample_id} already exists in the database, skipping.")
+                        except SQLAlchemyError as e:
+                            # Log any database errors encountered during insertion.
+                            self.logger.error(f"Error inserting Sample {sample_id}: {e}")
+
+                    # Clear memory for the current XML element and its parent.
+                    elem.clear()
+                    while elem.getparent() is not None:
+                        del elem.getparent()[0]
+
+            # Step 6: Update the SampleCount field for the SeriesID.
             self._update_series_sample_count(session, inferred_series_id, sample_count)
             self.logger.info(f"Updated SeriesID {inferred_series_id} with SampleCount {sample_count}.")
 
-            # Step 5: Commit all changes made during parsing.
+            # Commit all changes made during parsing.
             session.commit()
 
-            # Step 6: Log the processing status for the SeriesID.
+            # Step 7: Log the processing status and clean up associated files.
             self.file_handler.log_processed(inferred_series_id)
-
-            # Step 7: Clean up files for the processed SeriesID.
             self.file_handler.clean_files(inferred_series_id)
 
             # Log the successful completion of the ETL process.
             self.logger.info("Metadata streaming completed successfully.")
 
         except Exception as e:
-            # Rollback changes in case of an error.
+            # Roll back changes in case of an error.
             session.rollback()
             self.logger.critical(f"Error during streaming: {e}")
             raise RuntimeError("Streaming failed.") from e

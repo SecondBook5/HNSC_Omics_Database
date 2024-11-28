@@ -98,14 +98,19 @@ class GeoFileHandler:
         try:
             # Construct the GEO directory path
             geo_dir = os.path.join(self.output_dir, geo_id)
+
+            # Ensure directory exists and validate file paths
+            if not os.path.exists(geo_dir):
+                raise FileNotFoundError(f"Directory for GEO ID {geo_id} does not exist: {geo_dir}")
+
             # Validate that all files in file_names exist in the specified GEO directory
             validated_files = []
             for file_name in file_names:
                 full_path = os.path.join(geo_dir, file_name)
-                if not os.path.exists(full_path):
-                    self.logger.warning(f"File {file_name} for GEO ID {geo_id} does not exist.")
-                else:
+                if os.path.isfile(full_path):  # Ensure it's a valid file, not a directory
                     validated_files.append(file_name)
+                else:
+                    self.logger.warning(f"File {file_name} for GEO ID {geo_id} does not exist.")
 
             # If no valid files are found, raise an exception
             if not validated_files:
@@ -120,7 +125,7 @@ class GeoFileHandler:
                     GeoID=geo_id,
                     Status="downloaded",
                     Message="Files downloaded successfully.",
-                    FileNames=validated_files,  # Store only validated files
+                    FileNames=validated_files,
                     Timestamp=date.today(),
                 ).on_conflict_do_update(
                     index_elements=["GeoID"],
@@ -215,7 +220,7 @@ class GeoFileHandler:
             for root, _, files in os.walk(geo_dir):
                 for file in files:
                     os.remove(os.path.join(root, file))
-            os.rmdir(geo_dir)  # Remove the directory itself
+            os.rmdir(geo_dir)
 
             # Validate directory deletion
             if os.path.exists(geo_dir):

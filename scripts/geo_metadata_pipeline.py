@@ -213,6 +213,28 @@ class GeoMetadataPipeline:
         """
         # Define the path for the summary JSON file
         summary_path = os.path.join(OUTPUT_DIR, "pipeline_summary.json")
+        series_sample_counts = {}
+
+        try:
+            with get_session_context() as session:
+                # Query database for per-series sample counts
+                series_sample_counts = {
+                    series.SeriesID: session.query(DatasetSampleMetadata)
+                    .filter_by(SeriesID=series.SeriesID)
+                    .count()
+                    for series in session.query(DatasetSeriesMetadata).all()
+                }
+
+            # Add per-series sample counts to stats
+            self.stats["series_sample_counts"] = series_sample_counts
+            self.stats["total_series"] = len(series_sample_counts)
+            self.stats["total_samples"] = sum(series_sample_counts.values())
+
+            # Debug log for sample counts
+            self.logger.debug(f"Series sample counts: {series_sample_counts}")
+
+        except Exception as e:
+            self.logger.error(f"Error generating per-series counts for summary: {e}")
 
         # Save statistics as a JSON file
         with open(summary_path, "w") as summary_file:
@@ -245,9 +267,8 @@ class GeoMetadataPipeline:
             # Step 1: Download the GEO metadata file
             file_paths = self.downloader.download_file(geo_id)
 
-            # Check if the download returned valid file paths
-            if not file_paths:
-                raise FileNotFoundError(f"No files were downloaded for GEO ID {geo_id}")
+            # Log the downloaded file names
+            self.file_handler.log_download(geo_id, [os.path.basename(path) for path in file_paths])
 
             # Validate each downloaded file path
             for file_path in file_paths:
@@ -276,15 +297,6 @@ class GeoMetadataPipeline:
             self.file_handler.clean_files(geo_id)
             self.validate_cleanup(geo_id)
 
-        except MissingForeignKeyError as mfe:
-            self.failed_geo_ids[geo_id] = f"ForeignKeyError: {str(mfe)}"
-            self.logger.error(f"Foreign key error while processing GEO ID {geo_id}: {mfe}")
-        except FileNotFoundError as fnf:
-            self.failed_geo_ids[geo_id] = f"FileNotFoundError: {str(fnf)}"
-            self.logger.error(f"File operation failed for GEO ID {geo_id}: {fnf}")
-        except ValueError as ve:
-            self.failed_geo_ids[geo_id] = f"ValueError: {str(ve)}"
-            self.logger.error(f"Value error encountered for GEO ID {geo_id}: {ve}")
         except Exception as e:
             self.failed_geo_ids[geo_id] = f"UnexpectedError: {str(e)}"
             self.logger.error(f"Unexpected error processing GEO ID {geo_id}: {e}")

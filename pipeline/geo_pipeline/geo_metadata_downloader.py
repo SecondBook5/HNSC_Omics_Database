@@ -54,7 +54,8 @@ class GeoMetadataDownloader:
 
     def download_files(self, file_ids: List[str]) -> None:
         """
-        Downloads and extracts multiple GEO XML files based on their IDs.
+        Downloads and extracts multiple GEO files based on their IDs.
+        Logs both XML and non-XML files to the database.
 
         Args:
             file_ids (List[str]): List of GEO series IDs to download and extract.
@@ -69,7 +70,7 @@ class GeoMetadataDownloader:
                 # Log success if the file was downloaded and extracted successfully
                 if downloaded_files:
                     self.logger.info(f"Successfully processed {file_id}: {downloaded_files}")
-                    # Log the download in the file handler
+                    # Log all files (XML and non-XML) to the database
                     self.file_handler.log_download(file_id, downloaded_files)
                 else:
                     # Log an error if the process failed for the current file
@@ -80,13 +81,14 @@ class GeoMetadataDownloader:
 
     def download_file(self, file_id: str) -> Optional[List[str]]:
         """
-        Downloads a GEO XML file for a given GEO series ID and extracts it.
+        Downloads a GEO file for a given GEO series ID and extracts it.
+        Logs both XML and non-XML files.
 
         Args:
             file_id (str): GEO series ID (e.g., "GSE112021").
 
         Returns:
-            Optional[List[str]]: List of paths to the extracted XML files, or None if failed.
+            Optional[List[str]]: List of all extracted files (XML and non-XML), or None if failed.
         """
         # Raise an error if the file ID is empty
         if not file_id:
@@ -111,15 +113,19 @@ class GeoMetadataDownloader:
                 self.logger.error(f"Extraction failed for GEO ID {file_id}")
                 return None
 
+            # Categorize files as XML and non-XML
             xml_files = [f for f in extracted_files if f.endswith(".xml")]
-            if not xml_files:
-                self.logger.error(f"No XML files found in extracted files for GEO ID {file_id}. Files: {extracted_files}")
-                return None
+            non_xml_files = [f for f in extracted_files if not f.endswith(".xml")]
 
-            self.logger.info(f"XML files extracted for {file_id}: {xml_files}")
-            return xml_files
+            # Log categorized files
+            self.logger.info(
+                f"XML files for GEO ID {file_id}: {xml_files}" if xml_files else f"No XML files found for GEO ID {file_id}.")
+            self.logger.info(
+                f"Non-XML files for GEO ID {file_id}: {non_xml_files}" if non_xml_files else f"No non-XML files found for GEO ID {file_id}.")
+
+            return extracted_files
         except Exception as e:
-            # Log any unexpected errors during download or extraction
+            # Log unexpected errors during download or extraction
             self.logger.error(f"Error during download or extraction for {file_id}: {e}")
             return None
 
@@ -186,27 +192,14 @@ class GeoMetadataDownloader:
             os.remove(tar_path)
             self.logger.info(f"Extraction complete: {extract_dir}")
 
-            # List the extracted files
-            extracted_files = os.listdir(extract_dir)
-            self.logger.info(f"Extracted files: {extracted_files}")
-
-            # Validate that extracted files exist and return their absolute paths
-            extracted_paths = []
-            for file_name in extracted_files:
-                file_path = os.path.join(extract_dir, file_name)
-                if os.path.exists(file_path):  # Check if the file exists
-                    extracted_paths.append(file_path)
-                else:
-                    # Log an error if any expected file is missing
-                    self.logger.error(f"Expected extracted file is missing: {file_path}")
-
-            # If no files are successfully validated, return None
-            if not extracted_paths:
-                self.logger.error(f"No valid files found after extracting {tar_path} to {extract_dir}.")
+            # Validate that extracted files exist
+            extracted_files = [os.path.join(extract_dir, f) for f in os.listdir(extract_dir)]
+            if not extracted_files:
+                self.logger.error(f"No files found in extraction directory: {extract_dir}.")
                 return None
 
-            return extracted_paths
-
+            self.logger.info(f"Extracted files: {extracted_files}")
+            return extracted_files
         except tarfile.TarError as tar_err:
             # Log errors related to tar file handling
             self.logger.error(f"Tar file error: {tar_err}")
