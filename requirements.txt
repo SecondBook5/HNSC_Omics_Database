@@ -26,3 +26,4 @@ psutil
 pathlib~=1.0.1
 psutil~=6.0.0
 statsmodels~=0.14.4
+graphviz

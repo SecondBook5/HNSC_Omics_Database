@@ -55,7 +55,7 @@ class GeoMetadataDownloader:
     def download_files(self, file_ids: List[str]) -> None:
         """
         Downloads and extracts multiple GEO files based on their IDs.
-        Logs both XML and non-XML files to the database.
+        Logs success once per GEO ID instead of for each file.
 
         Args:
             file_ids (List[str]): List of GEO series IDs to download and extract.
@@ -65,19 +65,20 @@ class GeoMetadataDownloader:
             try:
                 # Log the start of processing for the current GEO series
                 self.logger.debug(f"Starting download for GEO ID: {file_id}")
-                # Attempt to download and extract the file
+                # Attempt to download and extract files for the GEO ID
                 downloaded_files = self.download_file(file_id)
-                # Log success if the file was downloaded and extracted successfully
+
                 if downloaded_files:
-                    self.logger.info(f"Successfully processed {file_id}: {downloaded_files}")
-                    # Log all files (XML and non-XML) to the database
+                    # Log success for the entire GEO ID instead of individual files
+                    self.logger.info(
+                        f"Successfully downloaded and validated files for GEO ID {file_id}: {len(downloaded_files)} files.")
                     self.file_handler.log_download(file_id, downloaded_files)
                 else:
-                    # Log an error if the process failed for the current file
-                    self.logger.error(f"Failed to process {file_id}")
+                    # Log an error if no files were downloaded successfully
+                    self.logger.error(f"No files processed successfully for GEO ID {file_id}.")
             except Exception as e:
-                # Log critical errors that occur during processing
-                self.logger.critical(f"Critical error processing {file_id}: {e}")
+                # Log critical errors that occur during processing for a GEO ID
+                self.logger.critical(f"Critical error processing GEO ID {file_id}: {e}")
 
     def download_file(self, file_id: str) -> Optional[List[str]]:
         """

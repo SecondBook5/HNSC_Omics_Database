@@ -226,15 +226,8 @@ class GeoMetadataETL:
         """
         Parses a GEO MINiML file, extracts metadata, and streams it to the database.
 
-        Steps:
-            1. Infers the SeriesID from the filename and validates it.
-            2. Ensures the SeriesID exists in the database using an upsert operation.
-            3. Parses the XML file efficiently, minimizing memory usage with iterparse.
-            4. Extracts metadata for Series and Sample elements and streams them to the database.
-            5. Prevents duplicate uploads using a set of already uploaded SampleIDs.
-            6. Updates the SampleCount field for the SeriesID in the database after all samples are processed.
-            7. Logs the processing status using `GeoFileHandler.log_processed()`.
-            8. Cleans up files associated with the SeriesID after successful processing.
+        Gracefully handles non-XML files by skipping them and ensures the SampleCount
+        field is only updated when new samples are added to prevent overwriting valid counts.
 
         Returns:
             int: The number of samples processed and successfully uploaded to the database.
@@ -242,80 +235,80 @@ class GeoMetadataETL:
         Raises:
             RuntimeError: If any critical error occurs during the parsing or streaming process.
         """
+        # Validate that the file is an XML file.
+        if not self.file_path.endswith(".xml"):
+            # Log a warning and skip processing for non-XML files.
+            self.logger.warning(f"Skipping non-XML file: {self.file_path}.")
+            return 0  # Gracefully skip non-XML files.
+
         # Extract the base name of the file to infer the SeriesID.
-        base_name = os.path.basename(self.file_path)
+        base_name = os.path.basename(self.file_path)  # Get only the file name.
         inferred_series_id = base_name.split("_")[0]  # Extract SeriesID from the filename.
 
-        # Validate inferred SeriesID using a regular expression.
+        # Validate inferred SeriesID using a regex.
         if not inferred_series_id or not re.match(r'^GSE\d+$', inferred_series_id):
-            # Log and raise an error if SeriesID cannot be inferred.
-            self.logger.critical(f"Failed to infer a valid SeriesID from filename: {base_name}")
-            raise ValueError(f"Invalid SeriesID inferred from filename: {base_name}")
+            # Log an error and skip files with invalid SeriesID.
+            self.logger.error(f"Failed to infer a valid SeriesID from filename: {base_name}")
+            return 0
 
-        # Log the inferred SeriesID.
-        self.logger.info(f"Inferred SeriesID from filename: {inferred_series_id}")
+        # Log the inferred SeriesID for debugging purposes.
+        self.logger.info(f"Processing GEO Series ID: {inferred_series_id}")
 
-        # Set up the database engine and session.
-        engine = get_postgres_engine()  # Get the database engine configured for PostgreSQL.
-        Session = sessionmaker(bind=engine)  # Create a session factory bound to the engine.
-        session = Session()  # Initialize a database session.
+        # Initialize the database engine and session for database interactions.
+        engine = get_postgres_engine()  # Get the database engine for PostgreSQL.
+        Session = sessionmaker(bind=engine)  # Bind the session factory to the engine.
+        session = Session()  # Create a new database session.
 
-        # Define the XML namespace for parsing.
-        ns = {'geo': 'http://www.ncbi.nlm.nih.gov/geo/info/MINiML'}
+        # Define XML namespace and initialize counters for processing.
+        ns = {'geo': 'http://www.ncbi.nlm.nih.gov/geo/info/MINiML'}  # Define XML namespace.
+        new_sample_count = 0  # Counter for new samples added during this run.
 
-        # Initialize a counter to track the number of samples processed.
-        sample_count = 0
         try:
-            # Step 1: Validate the XML structure to ensure the file is well-formed.
-            self._validate_xml()
-            self.logger.info("Parsing and streaming metadata in a single pass...")
+            # Step 2: Validate the XML structure to ensure the file is well-formed.
+            self._validate_xml()  # Check if the XML file is valid.
+            self.logger.info("XML structure validated.")  # Log success.
 
-            # Step 2: Ensure the SeriesID exists in the database.
-            try:
-                # Use an upsert query to insert or ensure the SeriesID exists.
-                insert_query = insert(DatasetSeriesMetadata).values(
-                    SeriesID=inferred_series_id
-                ).on_conflict_do_nothing()  # Avoid duplicate insertions.
-                session.execute(insert_query)
-                session.commit()
-                self.logger.info(f"Ensured SeriesID {inferred_series_id} exists in dataset_series_metadata.")
-            except SQLAlchemyError as e:
-                # Log and raise an error if SeriesID insertion fails.
-                self.logger.error(f"Error ensuring SeriesID in database: {e}")
-                raise
+            # Ensure the SeriesID exists in the database or create it if not.
+            insert_query = insert(DatasetSeriesMetadata).values(
+                SeriesID=inferred_series_id
+            ).on_conflict_do_nothing()  # Avoid inserting duplicates.
+            session.execute(insert_query)  # Execute the insert query.
+            session.commit()  # Commit the transaction.
+            self.logger.info(f"Ensured SeriesID {inferred_series_id} in database.")  # Log success.
 
-            # Step 3: Fetch existing SampleIDs to avoid redundant uploads.
+            # Fetch existing SampleIDs to avoid re-uploading duplicates.
             existing_samples = session.query(DatasetSampleMetadata.SampleID).filter_by(
                 SeriesID=inferred_series_id).all()
             uploaded_samples = set(sample[0] for sample in existing_samples)  # Convert to a set for fast lookups.
 
-            # Step 4: Parse the XML file using iterparse for efficient memory usage.
+            # Efficiently parse the XML file with iterparse to minimize memory usage.
             context = etree.iterparse(
-                self.file_path, events=("start", "end"),
+                self.file_path, events=("start", "end"),  # Process start and end events.
                 tag=["{http://www.ncbi.nlm.nih.gov/geo/info/MINiML}Series",
-                     "{http://www.ncbi.nlm.nih.gov/geo/info/MINiML}Sample"]
+                     "{http://www.ncbi.nlm.nih.gov/geo/info/MINiML}Sample"]  # Target specific XML tags.
             )
 
-            # Step 5: Process Series and Sample elements from the XML.
+            # Process Series and Sample elements from the XML file.
             for event, elem in context:
                 if event == "end" and elem.tag.endswith("Series"):
                     # Extract metadata for the Series element.
                     series_data = self._process_series_data(elem, ns)
                     if not series_data:
-                        series_data = {
-                            "SeriesID": inferred_series_id}  # Fallback to inferred SeriesID if no data extracted.
+                        # If extraction fails, create a fallback with only the SeriesID.
+                        series_data = {"SeriesID": inferred_series_id}
                     else:
-                        series_data["SeriesID"] = inferred_series_id  # Ensure SeriesID matches the inferred value.
+                        # Ensure the SeriesID matches the inferred value.
+                        series_data["SeriesID"] = inferred_series_id
 
                     # Insert Series metadata into the database.
                     try:
+                        # Stream the Series metadata into the database.
                         self._stream_series_to_db(session, series_data)
-                        self.logger.info(f"Series {series_data['SeriesID']} uploaded successfully.")
                     except SQLAlchemyError as e:
-                        # Log any database errors encountered during insertion.
-                        self.logger.error(f"Error inserting Series {series_data['SeriesID']}: {e}")
+                        # Log database errors for Series insertion.
+                        self.logger.error(f"Failed to insert Series {inferred_series_id}: {e}")
 
-                    # Clear memory for the current XML element and its parent.
+                    # Clear memory for the processed element.
                     elem.clear()
                     while elem.getparent() is not None:
                         del elem.getparent()[0]
@@ -325,37 +318,40 @@ class GeoMetadataETL:
                     sample_data = self._process_sample_data(elem, ns, inferred_series_id)
                     sample_id = sample_data.get("SampleID") if sample_data else None
 
-                    # Avoid processing samples that have already been uploaded.
+                    # Avoid re-uploading samples that already exist in the database.
                     if sample_id and sample_id not in uploaded_samples:
                         try:
-                            # Attempt to insert the Sample metadata into the database.
+                            # Insert new Sample metadata into the database.
                             result = session.execute(
                                 insert(DatasetSampleMetadata).values(sample_data).on_conflict_do_nothing()
                             )
-                            if result.rowcount > 0:  # Log only if a new row was inserted.
-                                uploaded_samples.add(sample_id)
-                                sample_count += 1
-                                self.logger.info(f"Sample {sample_id} uploaded successfully.")
-                            else:
-                                # Log that the Sample already exists in the database.
-                                self.logger.debug(f"Sample {sample_id} already exists in the database, skipping.")
+                            if result.rowcount > 0:  # Check if a new row was inserted.
+                                uploaded_samples.add(sample_id)  # Add to the uploaded set.
+                                new_sample_count += 1  # Increment the new sample counter.
                         except SQLAlchemyError as e:
-                            # Log any database errors encountered during insertion.
-                            self.logger.error(f"Error inserting Sample {sample_id}: {e}")
+                            # Log database errors for Sample insertion.
+                            self.logger.error(f"Failed to insert Sample {sample_id}: {e}")
 
-                    # Clear memory for the current XML element and its parent.
+                    # Clear memory for the processed element.
                     elem.clear()
                     while elem.getparent() is not None:
                         del elem.getparent()[0]
 
-            # Step 6: Update the SampleCount field for the SeriesID.
-            self._update_series_sample_count(session, inferred_series_id, sample_count)
-            self.logger.info(f"Updated SeriesID {inferred_series_id} with SampleCount {sample_count}.")
+            # Only update SampleCount if new samples were added.
+            if new_sample_count > 0:
+                try:
+                    # Update the SampleCount field for the SeriesID.
+                    self._update_series_sample_count(session, inferred_series_id,
+                                                     len(uploaded_samples))
+                    self.logger.info(f"Updated SampleCount for SeriesID {inferred_series_id}: {len(uploaded_samples)}")
+                except SQLAlchemyError as e:
+                    # Log any errors that occur while updating the count.
+                    self.logger.error(f"Error updating SampleCount for SeriesID {inferred_series_id}: {e}")
 
-            # Commit all changes made during parsing.
+            # Commit all changes made during processing.
             session.commit()
 
-            # Step 7: Log the processing status and clean up associated files.
+            # Log the processing status and clean up associated files.
             self.file_handler.log_processed(inferred_series_id)
             self.file_handler.clean_files(inferred_series_id)
 
@@ -368,11 +364,11 @@ class GeoMetadataETL:
             self.logger.critical(f"Error during streaming: {e}")
             raise RuntimeError("Streaming failed.") from e
         finally:
-            # Ensure the database session is closed.
+            # Ensure the database session is closed to avoid resource leaks.
             session.close()
 
-        # Return the number of samples processed.
-        return sample_count
+        # Return the number of new samples processed during this run.
+        return new_sample_count
 
     # ------------------- Helper Functions ----------------------------------------------
     def _validate_sample_data(self, sample_data: Dict) -> bool:
