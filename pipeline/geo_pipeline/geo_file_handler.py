@@ -1,5 +1,6 @@
 # File: pipeline/geo_pipeline/geo_file_handler.py
 
+import logging  # For logging operations
 import os  # For file and directory operations
 import zipfile  # For compressing files into ZIP archives
 from datetime import date  # For timestamping log entries
@@ -9,9 +10,6 @@ from sqlalchemy.exc import SQLAlchemyError  # For handling SQLAlchemy-specific e
 from config.db_config import get_session_context  # For database session management
 from db.schema.metadata_schema import GeoMetadataLog  # For database schema access
 from config.logger_config import configure_logger  # For centralized logging configuration
-
-# Initialize a centralized logger for the file handler
-logger = configure_logger(name="GeoFileHandler", log_file="geo_file_handler.log")
 
 
 class GeoFileHandler:
@@ -27,7 +25,7 @@ class GeoFileHandler:
             geo_ids_file (Optional[str]): Path to the file containing GEO IDs (optional).
             output_dir (str): Directory where files are downloaded or stored.
             compress_files (bool): If True, compress files instead of deleting them.
-            logger: Logger instance for logging operations (default: create a new logger).
+            logger: Logger instance for logging operations (default: centralized logger).
         """
         # Store the path to the GEO IDs file
         self.geo_ids_file = geo_ids_file
@@ -35,23 +33,28 @@ class GeoFileHandler:
         self.output_dir = output_dir
         # Specify whether to compress files instead of deleting them
         self.compress_files = compress_files
-        # Use the provided logger or create a new one
-        self.logger = logger or configure_logger(name="GeoFileHandler", log_file="geo_file_handler.log")
+        # Use the provided logger or configure a new centralized logger
+        self.logger = logger or configure_logger(
+            name="GeoFileHandler",
+            log_file="geo_file_handler.log",
+            level=logging.INFO,
+            output="both"
+        )
 
     def initialize_log_table(self) -> None:
         """
         Initializes the geo_metadata_log table by marking all GEO IDs as 'not_downloaded.'
         """
         try:
-            # Ensure the GEO IDs file is provided
+            # Check if the GEO IDs file is provided
             if not self.geo_ids_file:
                 raise ValueError("GEO IDs file must be provided for batch initialization.")
 
-            # Ensure the GEO IDs file exists
+            # Verify that the GEO IDs file exists
             if not os.path.exists(self.geo_ids_file):
                 raise FileNotFoundError(f"GEO IDs file not found: {self.geo_ids_file}")
 
-            # Read GEO IDs from the file and strip whitespace
+            # Read GEO IDs from the file, stripping whitespace from each line
             with open(self.geo_ids_file, "r") as file:
                 geo_ids = [line.strip() for line in file if line.strip()]
 
@@ -77,10 +80,10 @@ class GeoFileHandler:
                     session.execute(insert_query)
                 session.commit()
 
-            # Log completion of initialization
+            # Log successful completion of the initialization process
             self.logger.info("Log table initialization complete.")
         except Exception as e:
-            # Log any errors during initialization
+            # Log and re-raise any errors during initialization
             self.logger.error(f"Failed to initialize log table: {e}")
             raise
 
@@ -93,43 +96,54 @@ class GeoFileHandler:
             file_names (List[str]): List of downloaded file names.
         """
         try:
+            # Construct the GEO directory path
+            geo_dir = os.path.join(self.output_dir, geo_id)
             # Validate that all files in file_names exist in the specified GEO directory
+            validated_files = []
             for file_name in file_names:
-                full_path = os.path.join(self.output_dir, geo_id, file_name)
+                full_path = os.path.join(geo_dir, file_name)
                 if not os.path.exists(full_path):
-                    raise FileNotFoundError(f"Expected file {full_path} does not exist.")
+                    self.logger.warning(f"File {file_name} for GEO ID {geo_id} does not exist.")
+                else:
+                    validated_files.append(file_name)
+
+            # If no valid files are found, raise an exception
+            if not validated_files:
+                raise FileNotFoundError(f"No valid files found for GEO ID {geo_id} in directory {geo_dir}.")
 
             # Log the download operation
-            self.logger.info(f"Logging download for GEO ID {geo_id} with files: {file_names}.")
+            self.logger.info(f"Logging download for GEO ID {geo_id} with files: {validated_files}")
+
+            # Insert or update the log entry for the GEO ID in the database
             with get_session_context() as session:
-                # Insert or update the log entry for the GEO ID
                 update_query = insert(GeoMetadataLog).values(
                     GeoID=geo_id,
                     Status="downloaded",
                     Message="Files downloaded successfully.",
-                    FileNames=file_names,
+                    FileNames=validated_files,  # Store only validated files
                     Timestamp=date.today(),
                 ).on_conflict_do_update(
                     index_elements=["GeoID"],
                     set_={
                         "Status": "downloaded",
                         "Message": "Files downloaded successfully.",
-                        "FileNames": file_names,
+                        "FileNames": validated_files,
                         "Timestamp": date.today(),
                     }
                 )
                 session.execute(update_query)
                 session.commit()
+
             # Log successful update of the download log
             self.logger.info(f"Download log updated for GEO ID {geo_id}.")
         except Exception as e:
-            # Log any errors during the logging process
+            # Log and re-raise any errors during the logging process
             self.logger.error(f"Failed to log download for GEO ID {geo_id}: {e}")
             raise
 
     def log_processed(self, geo_id: str) -> None:
         """
-        Logs the processing/upload of metadata for a specific GEO ID.
+        Logs the processing or upload of metadata for a specific GEO ID.
 
         Args:
             geo_id (str): The GEO ID being logged.
@@ -137,27 +151,31 @@ class GeoFileHandler:
         try:
             # Log the start of the processing operation
             self.logger.info(f"Logging processing/upload for GEO ID {geo_id}.")
+
+            # Use a database session to update the log entry for the GEO ID
             with get_session_context() as session:
                 # Insert or update the log entry to mark the GEO ID as processed
                 update_query = insert(GeoMetadataLog).values(
                     GeoID=geo_id,
                     Status="processed",
                     Message="Metadata uploaded successfully.",
-                    Timestamp=date.today(),
+                    Timestamp=date.today()
                 ).on_conflict_do_update(
                     index_elements=["GeoID"],
                     set_={
                         "Status": "processed",
                         "Message": "Metadata uploaded successfully.",
-                        "Timestamp": date.today(),
+                        "Timestamp": date.today()
                     }
                 )
+                # Execute the query and commit changes to the database
                 session.execute(update_query)
                 session.commit()
+
             # Log successful update of the processing log
             self.logger.info(f"Processing log updated for GEO ID {geo_id}.")
         except Exception as e:
-            # Log any errors during the processing log update
+            # Log and re-raise any errors during the logging process
             self.logger.error(f"Failed to log processing for GEO ID {geo_id}: {e}")
             raise
 
@@ -172,14 +190,14 @@ class GeoFileHandler:
         # Construct the full path to the GEO ID's directory
         geo_dir = os.path.join(self.output_dir, geo_id)
 
-        # If the directory does not exist, log a warning and skip cleanup
+        # If the directory does not exist, log a warning and exit
         if not os.path.exists(geo_dir):
             self.logger.warning(f"No files found for GEO ID {geo_id}. Skipping cleanup.")
             return
 
         try:
             if self.compress_files:
-                # Compress the directory into a ZIP archive
+                # Create a ZIP archive of the directory
                 zip_path = f"{geo_dir}.zip"
                 with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zipf:
                     for root, _, files in os.walk(geo_dir):
@@ -187,30 +205,25 @@ class GeoFileHandler:
                             full_path = os.path.join(root, file)
                             arcname = os.path.relpath(full_path, start=self.output_dir)
                             zipf.write(full_path, arcname=arcname)
-                # Log successful compression
-                self.logger.info(f"Compressed files for GEO ID {geo_id} into {zip_path}.")
+                self.logger.info(f"Compressed files for GEO ID {geo_id} into {zip_path}")
 
-                # Validate compression and delete the original files
+                # Validate the ZIP file creation
                 if not os.path.exists(zip_path):
-                    raise RuntimeError(f"Failed to create zip file for GEO ID {geo_id}.")
-                for root, _, files in os.walk(geo_dir):
-                    for file in files:
-                        os.remove(os.path.join(root, file))
-                os.rmdir(geo_dir)
-            else:
-                # Delete files and directory directly
-                for root, _, files in os.walk(geo_dir):
-                    for file in files:
-                        os.remove(os.path.join(root, file))
-                os.rmdir(geo_dir)
+                    raise RuntimeError(f"Failed to create ZIP file for GEO ID {geo_id}")
 
-                # Validate deletion
-                if os.path.exists(geo_dir):
-                    raise RuntimeError(f"Failed to delete directory for GEO ID {geo_id}.")
+            # Remove all files in the directory
+            for root, _, files in os.walk(geo_dir):
+                for file in files:
+                    os.remove(os.path.join(root, file))
+            os.rmdir(geo_dir)  # Remove the directory itself
+
+            # Validate directory deletion
+            if os.path.exists(geo_dir):
+                raise RuntimeError(f"Failed to delete directory for GEO ID {geo_id}")
 
             # Log successful cleanup
             self.logger.info(f"Cleaned up files for GEO ID {geo_id} successfully.")
         except Exception as e:
-            # Log any errors during the cleanup process
+            # Log and re-raise any errors during the cleanup process
             self.logger.error(f"Failed to clean files for GEO ID {geo_id}: {e}")
             raise

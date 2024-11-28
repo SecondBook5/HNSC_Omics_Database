@@ -1,5 +1,81 @@
-geo_ids_file: "resources/geo_ids.txt"
-output_dir: "resources/data/metadata/geo_metadata/raw_metadata"
-log_dir: "logs"
-template: "resources/geo_tag_template.json"
-max_threads: 4
+# Centralized configuration for the HNSC Omics Database project
+
+logging:
+  log_dir: "logs"  # Central directory for all log files
+  level: "DEBUG"  # Logging level: DEBUG, INFO, WARNING, ERROR, CRITICAL
+  handlers:
+    geo_file_handler: "geo_file_handler.log"  # Log file for GeoFileHandler
+    geo_metadata_downloader: "geo_metadata_downloader.log"  # Log file for GEO Metadata Downloader
+    geo_metadata_etl: "geo_metadata_etl.log"  # Log file for ETL operations
+    setup_postgresql: "setup_postgresql.log"  # Log file for PostgreSQL setup
+    setup_mongodb: "setup_mongodb.log"  # Log file for MongoDB setup
+
+pipeline:
+  geo:
+    geo_ids_file: "resources/geo_ids.txt"  # File containing GEO IDs for processing
+    output_dir: "resources/data/metadata/geo_metadata/raw_metadata"  # Raw metadata directory
+    processed_dir: "resources/data/metadata/geo_metadata/processed_metadata"  # Processed metadata directory
+    tag_template: "resources/geo_tag_template.json"  # GEO tag JSON template
+    max_threads: 4  # Number of threads for parallel processing
+  cptac:
+    download_dir: "resources/data/metadata/cptac_metadata"  # Directory for CPTAC metadata
+    processed_dir: "resources/data/processed/CPTAC"  # Processed CPTAC files
+  tcga:
+    processed_dir: "resources/data/processed/TCGA"  # Directory for processed TCGA data
+
+etl:
+  extraction_dir: "resources/data/metadata/extraction"  # Directory for extracted files
+  validation_schema: "resources/validation_schema.json"  # JSON schema for metadata validation
+  clean_up: true  # Whether to clean up raw files after processing
+  retries:
+    attempts: 3  # Number of retry attempts for failed operations
+    delay: 5  # Delay (in seconds) between retries
+
+database:
+  postgres:
+    db_name: "${PG_DB_NAME}"  # PostgreSQL database name from .env
+    host: "${PG_HOST}"  # PostgreSQL host from .env
+    port: "${PG_PORT}"  # PostgreSQL port from .env
+    user: "${DB_USER}"  # PostgreSQL username from .env
+    password: "${DB_PASSWORD}"  # PostgreSQL password from .env
+  mongo:
+    db_name: "${MONGO_DB_NAME}"  # MongoDB database name from .env
+    host: "${MONGO_HOST}"  # MongoDB host from .env
+    port: "${MONGO_PORT}"  # MongoDB port from .env
+    user: "${DB_USER}"  # MongoDB username from .env
+    password: "${DB_PASSWORD}"  # MongoDB password from .env
+
+data_directories:
+  raw:
+    geo: "resources/data/raw/GEO"  # Directory for raw GEO data
+    cptac: "resources/data/raw/CPTAC"  # Directory for raw CPTAC data
+    tcga: "resources/data/raw/TCGA"  # Directory for raw TCGA data
+  processed:
+    geo: "resources/data/processed/GEO"  # Processed GEO files
+    cptac: "resources/data/processed/CPTAC"  # Processed CPTAC files
+    tcga: "resources/data/processed/TCGA"  # Processed TCGA files
+  metadata:
+    geo: "resources/data/metadata/geo_metadata"  # Directory for GEO metadata
+    cptac: "resources/data/metadata/cptac_metadata"  # Directory for CPTAC metadata
+    tcga: "resources/data/metadata/tcga_metadata"  # Directory for TCGA metadata
+
+notebooks:
+  atac_seq: "notebooks/ATACSeq_analysis.ipynb"  # ATAC-Seq analysis notebook
+  chip_seq: "notebooks/GSE112021_ChIP_Seq_Processing.ipynb"  # ChIP-Seq analysis notebook
+  proteomics: "notebooks/Proteomics_analysis.ipynb"  # Proteomics analysis notebook
+  spatial: "notebooks/Spatial_analysis.ipynb"  # Spatial transcriptomics analysis notebook
+
+results:
+  atac_seq: "resources/results/ATAC_Seq"  # Directory for ATAC-Seq results
+  chip_seq: "resources/results/ChIP-Seq"  # Directory for ChIP-Seq results
+  rna_seq: "resources/results/RNA-Seq"  # Directory for RNA-Seq results
+  spatial_transcriptomics: "resources/results/Spatial_Transcriptomics"  # Spatial transcriptomics results
+
+ui:
+  cache_dir: "ui/cache"  # Cache directory for UI components
+  temp_dir: "ui/temp"  # Temporary directory for UI components
+  logs: "ui/logs"  # UI-specific logs directory
+
+tests:
+  output_dir: "test_output"  # Directory for storing test output
+  log_dir: "tests/logs"  # Directory for test logs

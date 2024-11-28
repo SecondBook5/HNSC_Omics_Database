@@ -4,4 +4,7 @@
     <option name="sdkName" value="Python 3.12 (HNSC_Omics_Database)" />
   </component>
   <component name="ProjectRootManager" version="2" project-jdk-name="/home/secondbook5/micromamba/envs/HNSC_Omics" project-jdk-type="Python SDK" />
+  <component name="PyCharmDSProjectLayout">
+    <option name="id" value="JupyterRightHiddenStructureLayout" />
+  </component>
 </project>
