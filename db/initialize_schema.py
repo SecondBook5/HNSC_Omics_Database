@@ -1,6 +1,6 @@
 # File: initialize_schema.py
 """
-This script initializes the database schema by creating tables defined in metadata_schema.py.
+This script initializes the database schema by creating tables defined in geo_metadata_schema.py.
 """
 import sys
 import os
@@ -9,12 +9,12 @@ import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from config.db_config import Base, get_postgres_engine  # Now this should work
-from db.schema.metadata_schema import DatasetSeriesMetadata, DatasetSampleMetadata, GeoMetadataLog  # Import models
+from db.schema.geo_metadata_schema import GeoSeriesMetadata, GeoSampleMetadata, GeoMetadataLog  # Import models
 
 def initialize_tables() -> None:
     """
     Initializes the tables in the PostgreSQL database.
-    Creates tables defined in metadata_schema.py if they do not already exist.
+    Creates tables defined in geo_metadata_schema.py if they do not already exist.
     """
     try:
         # Get the PostgreSQL engine

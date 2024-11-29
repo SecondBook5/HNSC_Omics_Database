@@ -9,7 +9,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import SQLAlchemyError
 from config.db_config import get_postgres_engine
-from db.schema.metadata_schema import DatasetSeriesMetadata, DatasetSampleMetadata
+from db.schema.geo_metadata_schema import GeoSeriesMetadata, GeoSampleMetadata
 from config.logger_config import configure_logger
 from pipeline.geo_pipeline.geo_file_handler import GeoFileHandler  # Import GeoFileHandler
 
@@ -189,7 +189,7 @@ class GeoMetadataETL:
             series_id (str): The inferred SeriesID from the file name.
         """
         try:
-            insert_query = insert(DatasetSeriesMetadata).values({"SeriesID": series_id}).on_conflict_do_nothing()
+            insert_query = insert(GeoSeriesMetadata).values({"SeriesID": series_id}).on_conflict_do_nothing()
             session.execute(insert_query)
             session.commit()
         except SQLAlchemyError as e:
@@ -210,7 +210,7 @@ class GeoMetadataETL:
         """
         try:
             update_query = (
-                insert(DatasetSeriesMetadata)
+                insert(GeoSeriesMetadata)
                 .values(SeriesID=series_id, SampleCount=sample_count)
                 .on_conflict_do_update(
                     index_elements=['SeriesID'],
@@ -269,7 +269,7 @@ class GeoMetadataETL:
             self.logger.info("XML structure validated.")  # Log success.
 
             # Ensure the SeriesID exists in the database or create it if not.
-            insert_query = insert(DatasetSeriesMetadata).values(
+            insert_query = insert(GeoSeriesMetadata).values(
                 SeriesID=inferred_series_id
             ).on_conflict_do_nothing()  # Avoid inserting duplicates.
             session.execute(insert_query)  # Execute the insert query.
@@ -277,7 +277,7 @@ class GeoMetadataETL:
             self.logger.info(f"Ensured SeriesID {inferred_series_id} in database.")  # Log success.
 
             # Fetch existing SampleIDs to avoid re-uploading duplicates.
-            existing_samples = session.query(DatasetSampleMetadata.SampleID).filter_by(
+            existing_samples = session.query(GeoSampleMetadata.SampleID).filter_by(
                 SeriesID=inferred_series_id).all()
             uploaded_samples = set(sample[0] for sample in existing_samples)  # Convert to a set for fast lookups.
 
@@ -323,7 +323,7 @@ class GeoMetadataETL:
                         try:
                             # Insert new Sample metadata into the database.
                             result = session.execute(
-                                insert(DatasetSampleMetadata).values(sample_data).on_conflict_do_nothing()
+                                insert(GeoSampleMetadata).values(sample_data).on_conflict_do_nothing()
                             )
                             if result.rowcount > 0:  # Check if a new row was inserted.
                                 uploaded_samples.add(sample_id)  # Add to the uploaded set.
@@ -414,7 +414,7 @@ class GeoMetadataETL:
         """
         try:
             # Prepare an upsert query to insert or update the Series metadata.
-            insert_query = insert(DatasetSeriesMetadata).values(series_data).on_conflict_do_update(
+            insert_query = insert(GeoSeriesMetadata).values(series_data).on_conflict_do_update(
                 index_elements=['SeriesID'],  # Use SeriesID as the unique key for conflict resolution.
                 set_={key: series_data[key] for key in series_data if key != 'SeriesID'}
                 # Update all fields except SeriesID.
@@ -442,7 +442,7 @@ class GeoMetadataETL:
         """
         try:
             # Prepare an insert query to add the Sample metadata, ignoring duplicates.
-            insert_query = insert(DatasetSampleMetadata).values(sample_data).on_conflict_do_nothing()
+            insert_query = insert(GeoSampleMetadata).values(sample_data).on_conflict_do_nothing()
             # Execute the insert query within the given database session.
             session.execute(insert_query)
         except SQLAlchemyError as e:

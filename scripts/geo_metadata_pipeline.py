@@ -14,7 +14,7 @@ from utils.connection_checker import DatabaseConnectionChecker  # For checking d
 from utils.exceptions import MissingForeignKeyError  # Custom exception for missing foreign key errors
 from concurrent.futures import ThreadPoolExecutor  # For parallel task execution
 from config.logger_config import configure_logger  # Centralized logger configuration
-from db.schema.metadata_schema import DatasetSeriesMetadata, DatasetSampleMetadata  # Database models for validation
+from db.schema.geo_metadata_schema import GeoSeriesMetadata, GeoSampleMetadata  # Database models for validation
 from pipeline.geo_pipeline.geo_classifier import DataTypeDeterminer  # Correct import for DataTypeDeterminer
 
 # ---------------- Configuration ----------------
@@ -148,9 +148,9 @@ class GeoMetadataPipeline:
         try:
             with get_session_context() as session:
                 # Check if the SeriesID exists in the database
-                series_exists = session.query(DatasetSeriesMetadata).filter_by(SeriesID=geo_id).first() is not None
+                series_exists = session.query(GeoSeriesMetadata).filter_by(SeriesID=geo_id).first() is not None
                 # Check if any Samples are associated with the SeriesID
-                samples_exist = session.query(DatasetSampleMetadata).filter_by(SeriesID=geo_id).count() > 0
+                samples_exist = session.query(GeoSampleMetadata).filter_by(SeriesID=geo_id).count() > 0
 
                 if not series_exists or not samples_exist:
                     raise RuntimeError(
@@ -218,10 +218,10 @@ class GeoMetadataPipeline:
             with get_session_context() as session:
                 # Query database for per-series sample counts
                 series_sample_counts = {
-                    series.SeriesID: session.query(DatasetSampleMetadata)
+                    series.SeriesID: session.query(GeoSampleMetadata)
                     .filter_by(SeriesID=series.SeriesID)
                     .count()
-                    for series in session.query(DatasetSeriesMetadata).all()
+                    for series in session.query(GeoSeriesMetadata).all()
                 }
 
             # Add per-series sample counts to stats

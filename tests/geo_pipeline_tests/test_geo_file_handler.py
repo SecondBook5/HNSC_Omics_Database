@@ -8,7 +8,7 @@ from datetime import date
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy import create_engine
 from pipeline.geo_pipeline.geo_file_handler import GeoFileHandler
-from db.schema.metadata_schema import GeoMetadataLog
+from db.schema.geo_metadata_schema import GeoMetadataLog
 
 # Mock database connection URL
 TEST_DB_URL = "sqlite:///:memory:"

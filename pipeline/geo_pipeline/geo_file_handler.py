@@ -8,7 +8,7 @@ from typing import List, Optional  # For type hinting
 from sqlalchemy.dialects.postgresql import insert  # For upsert database operations
 from sqlalchemy.exc import SQLAlchemyError  # For handling SQLAlchemy-specific exceptions
 from config.db_config import get_session_context  # For database session management
-from db.schema.metadata_schema import GeoMetadataLog  # For database schema access
+from db.schema.geo_metadata_schema import GeoMetadataLog  # For database schema access
 from config.logger_config import configure_logger  # For centralized logging configuration
 
 

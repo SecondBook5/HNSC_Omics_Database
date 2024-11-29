@@ -3,7 +3,7 @@ from typing import Optional, List, Set
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
 from config.db_config import get_session_context
-from db.schema.metadata_schema import DatasetSampleMetadata, DatasetSeriesMetadata
+from db.schema.geo_metadata_schema import GeoSampleMetadata, GeoSeriesMetadata
 from config.logger_config import configure_logger
 
 class DataTypeDeterminer:
@@ -81,7 +81,7 @@ class DataTypeDeterminer:
     # The rest of the methods remain unchanged...
 
 
-    def _get_series_metadata(self, session: Session) -> Optional[DatasetSeriesMetadata]:
+    def _get_series_metadata(self, session: Session) -> Optional[GeoSeriesMetadata]:
         """
         Retrieve series metadata for the given GEO Series ID.
 
@@ -89,15 +89,15 @@ class DataTypeDeterminer:
             session (Session): Database session.
 
         Returns:
-            Optional[DatasetSeriesMetadata]: Series metadata if available, otherwise None.
+            Optional[GeoSeriesMetadata]: Series metadata if available, otherwise None.
         """
         try:
-            return session.query(DatasetSeriesMetadata).filter_by(SeriesID=self.geo_id).one_or_none()
+            return session.query(GeoSeriesMetadata).filter_by(SeriesID=self.geo_id).one_or_none()
         except SQLAlchemyError as e:
             self.logger.error(f"Database error while fetching metadata for {self.geo_id}: {e}")
             return None
 
-    def _get_samples(self, session: Session) -> List[DatasetSampleMetadata]:
+    def _get_samples(self, session: Session) -> List[GeoSampleMetadata]:
         """
         Retrieve all samples for the given GEO Series.
 
@@ -105,20 +105,20 @@ class DataTypeDeterminer:
             session (Session): Database session.
 
         Returns:
-            List[DatasetSampleMetadata]: List of sample metadata.
+            List[GeoSampleMetadata]: List of sample metadata.
         """
         try:
-            return session.query(DatasetSampleMetadata).filter_by(SeriesID=self.geo_id).all()
+            return session.query(GeoSampleMetadata).filter_by(SeriesID=self.geo_id).all()
         except SQLAlchemyError as e:
             self.logger.error(f"Database error while fetching samples for Series {self.geo_id}: {e}")
             return []
 
-    def _determine_data_types(self, samples: List[DatasetSampleMetadata]) -> Set[str]:
+    def _determine_data_types(self, samples: List[GeoSampleMetadata]) -> Set[str]:
         """
         Determine data types from the samples.
 
         Args:
-            samples (List[DatasetSampleMetadata]): List of sample metadata.
+            samples (List[GeoSampleMetadata]): List of sample metadata.
 
         Returns:
             Set[str]: Set of unique data types.
@@ -204,9 +204,9 @@ class DataTypeDeterminer:
         """
         try:
             # Fetch the current series record
-            series = session.query(DatasetSeriesMetadata).filter_by(SeriesID=self.geo_id).one_or_none()
+            series = session.query(GeoSeriesMetadata).filter_by(SeriesID=self.geo_id).one_or_none()
             if not series:
-                self.logger.warning(f"Super-series {self.geo_id} not found in DatasetSeriesMetadata.")
+                self.logger.warning(f"Super-series {self.geo_id} not found in GeoSeriesMetadata.")
                 return set()
 
             # Ensure RelatedDatasets column is not empty
@@ -243,7 +243,7 @@ class DataTypeDeterminer:
                     self.logger.info(f"Processing related sub-series {target} for super-series {self.geo_id}.")
 
                     # Fetch the sub-series metadata
-                    sub_series = session.query(DatasetSeriesMetadata).filter_by(SeriesID=target).one_or_none()
+                    sub_series = session.query(GeoSeriesMetadata).filter_by(SeriesID=target).one_or_none()
                     if sub_series:
                         if sub_series.DataTypes:
                             try:
@@ -254,7 +254,7 @@ class DataTypeDeterminer:
                         else:
                             self.logger.warning(f"No data types found for sub-series {target}.")
                     else:
-                        self.logger.warning(f"Sub-series {target} not found in DatasetSeriesMetadata.")
+                        self.logger.warning(f"Sub-series {target} not found in GeoSeriesMetadata.")
                 else:
                     self.logger.info(f"Ignoring unrelated dataset entry: {related_dataset}")
 
@@ -289,14 +289,14 @@ class DataTypeDeterminer:
             inferred_data_types (List[str]): List of inferred data types.
         """
         try:
-            series = session.query(DatasetSeriesMetadata).filter_by(SeriesID=self.geo_id).one_or_none()
+            series = session.query(GeoSeriesMetadata).filter_by(SeriesID=self.geo_id).one_or_none()
             if series:
                 series.DataTypes = json.dumps(inferred_data_types)
                 session.add(series)
                 session.commit()
                 self.logger.info(f"Updated Series {self.geo_id} with data types: {inferred_data_types}")
             else:
-                self.logger.warning(f"Series {self.geo_id} not found in DatasetSeriesMetadata.")
+                self.logger.warning(f"Series {self.geo_id} not found in GeoSeriesMetadata.")
         except SQLAlchemyError as e:
             session.rollback()
             self.logger.error(f"Failed to update metadata for Series {self.geo_id}: {e}")
@@ -311,7 +311,7 @@ if __name__ == "__main__":
         with get_session_context() as session:
             geo_ids = [
                 series.SeriesID
-                for series in session.query(DatasetSeriesMetadata.SeriesID).all()
+                for series in session.query(GeoSeriesMetadata.SeriesID).all()
             ]
         main_logger.info(f"Retrieved {len(geo_ids)} GEO IDs from the database.")
 

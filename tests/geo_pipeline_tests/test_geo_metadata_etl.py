@@ -6,7 +6,7 @@ from sqlalchemy import create_engine  # SQLAlchemy engine creation
 from unittest.mock import patch  # Mocking external dependencies
 from pipeline.geo_pipeline.geo_metadata_etl import GeoMetadataETL  # Class to test
 from pipeline.geo_pipeline.geo_file_handler import GeoFileHandler  # File handler dependency
-from db.schema.metadata_schema import DatasetSeriesMetadata, DatasetSampleMetadata  # Database schema
+from db.schema.geo_metadata_schema import DatasetSeriesMetadata, DatasetSampleMetadata  # Database schema
 from lxml import etree  # XML parsing
 import json  # JSON handling
 
