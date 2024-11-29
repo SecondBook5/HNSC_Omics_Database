@@ -23,7 +23,7 @@ from pipeline.geo_pipeline.geo_classifier import DataTypeDeterminer  # Correct i
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 
 # Define the directory for output metadata files
-OUTPUT_DIR = os.path.join(BASE_DIR, "../resources/data/metadata/geo_metadata/raw_metadata")
+OUTPUT_DIR = os.path.join(BASE_DIR, "../resources/metadata/geo_metadata/raw_metadata")
 
 # Define the path to the file containing GEO IDs
 GEO_IDS_FILE = os.path.join(BASE_DIR, "../resources/geo_ids.txt")
