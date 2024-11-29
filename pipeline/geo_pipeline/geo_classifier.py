@@ -6,7 +6,6 @@ from config.db_config import get_session_context
 from db.schema.metadata_schema import DatasetSampleMetadata, DatasetSeriesMetadata
 from config.logger_config import configure_logger
 
-
 class DataTypeDeterminer:
     """
     Determines data types for GEO Series, including handling super-series, and updates the database.
@@ -27,6 +26,17 @@ class DataTypeDeterminer:
         self.geo_id = geo_id
         self.logger = configure_logger(name=f"DataTypeDeterminer-{geo_id}")
 
+        # Define manual single-cell datasets
+        self.manual_single_cell_datasets = {
+            "GSE103322",
+            "GSE137524",
+            "GSE139324",
+            "GSE164690",
+            "GSE182227",
+            "GSE234933",
+            "GSE195832",
+        }
+
     def process(self) -> None:
         """
         Determine the data types for the GEO Series and update the database.
@@ -39,16 +49,25 @@ class DataTypeDeterminer:
                     self.logger.warning(f"No series metadata found for {self.geo_id}.")
                     return
 
-                if "superseries" in series_metadata.Summary.lower():
-                    self.logger.info(f"{self.geo_id} identified as a super-series.")
-                    data_types = self._handle_super_series(session)
-                else:
-                    # Get data types from samples
-                    samples = self._get_samples(session)
-                    if not samples:
-                        self.logger.warning(f"No samples found for Series {self.geo_id}.")
-                        return
-                    data_types = self._determine_data_types(samples)
+                data_types = set()
+
+                # Include manual single-cell datasets if applicable
+                if self.geo_id in self.manual_single_cell_datasets:
+                    self.logger.info(f"Manually setting data type as 'Single Cell RNA-Seq' for Series {self.geo_id}")
+                    data_types.add("Single Cell RNA-Seq")
+
+                # If not a manual single-cell dataset, continue with existing logic
+                if not data_types:
+                    if "superseries" in series_metadata.Summary.lower():
+                        self.logger.info(f"{self.geo_id} identified as a super-series.")
+                        data_types = self._handle_super_series(session)
+                    else:
+                        # Get data types from samples
+                        samples = self._get_samples(session)
+                        if not samples:
+                            self.logger.warning(f"No samples found for Series {self.geo_id}.")
+                            return
+                        data_types = self._determine_data_types(samples)
 
                 # Validate and resolve conflicts
                 data_types = self._resolve_conflicts(data_types)
@@ -58,6 +77,9 @@ class DataTypeDeterminer:
                 self._update_series_metadata(session, data_types)
         except Exception as e:
             self.logger.error(f"Error processing Series {self.geo_id}: {e}")
+
+    # The rest of the methods remain unchanged...
+
 
     def _get_series_metadata(self, session: Session) -> Optional[DatasetSeriesMetadata]:
         """

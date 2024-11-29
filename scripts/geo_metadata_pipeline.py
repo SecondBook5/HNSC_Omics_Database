@@ -4,8 +4,6 @@
 import logging  # For logging pipeline information
 import os  # For file and directory operations
 import time
-from typing import Dict
-
 import psutil
 import json
 from pipeline.geo_pipeline.geo_metadata_downloader import GeoMetadataDownloader  # For downloading GEO metadata
@@ -17,6 +15,7 @@ from utils.exceptions import MissingForeignKeyError  # Custom exception for miss
 from concurrent.futures import ThreadPoolExecutor  # For parallel task execution
 from config.logger_config import configure_logger  # Centralized logger configuration
 from db.schema.metadata_schema import DatasetSeriesMetadata, DatasetSampleMetadata  # Database models for validation
+from pipeline.geo_pipeline.geo_classifier import DataTypeDeterminer  # Correct import for DataTypeDeterminer
 
 # ---------------- Configuration ----------------
 
@@ -293,7 +292,11 @@ class GeoMetadataPipeline:
             self.stats["total_series"] += 1
             self.stats["total_samples"] += total_processed_samples
 
-            # Step 3: Clean up downloaded files
+            # Step 3: Run the DataTypeDeterminer to determine and update data types
+            determiner = DataTypeDeterminer(geo_id)
+            determiner.process()
+
+            # Step 4: Clean up downloaded files
             self.file_handler.clean_files(geo_id)
             self.validate_cleanup(geo_id)
 

@@ -22,12 +22,13 @@ Future Expansions:
 """
 
 # Import necessary SQLAlchemy modules
-from sqlalchemy import Column, String, Text, Date, JSON, ForeignKey, Integer
+from sqlalchemy import Column, String, Text, Date, JSON, ForeignKey, Integer, Enum, Index
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 
 # Base class for all ORM models
 Base = declarative_base()
+
 
 class DatasetSeriesMetadata(Base):
     """
@@ -57,8 +58,17 @@ class DatasetSeriesMetadata(Base):
     # Relationship to samples
     Samples = relationship("DatasetSampleMetadata", back_populates="Series")
 
+    # Relationship to related datasets
+    RelatedDatasetsRelationships = relationship("RelatedDatasets", back_populates="Series", foreign_keys="[RelatedDatasets.SeriesID]")
+
+    # Add index to SeriesID for faster lookups
+    __table_args__ = (
+        Index('idx_series_id', 'SeriesID'),  # Index for SeriesID column
+    )
+
     def __repr__(self):
         return f"<DatasetSeriesMetadata(SeriesID={self.SeriesID}, SampleCount={self.SampleCount}, DataTypes={self.DataTypes})>"
+
 
 class DatasetSampleMetadata(Base):
     """
@@ -106,8 +116,43 @@ class DatasetSampleMetadata(Base):
     # Relationship to series
     Series = relationship("DatasetSeriesMetadata", back_populates="Samples")
 
+    # Add index to SeriesID for faster lookups
+    __table_args__ = (
+        Index('idx_sample_series_id', 'SeriesID'),  # Index for SeriesID column
+    )
+
     def __repr__(self):
         return f"<DatasetSampleMetadata(SampleID={self.SampleID}, SeriesID={self.SeriesID})>"
+
+
+class RelatedDatasets(Base):
+    """
+    Represents relationships between GEO datasets.
+    Includes superseries/subseries and datasets from the same study.
+    """
+    __tablename__ = 'related_datasets'
+
+    # Primary Key: Unique identifier for each relationship
+    id = Column(Integer, primary_key=True, autoincrement=True)
+
+    # Foreign keys: GEO Series IDs of the related datasets
+    SeriesID = Column(String, ForeignKey('dataset_series_metadata.SeriesID'), nullable=False)
+    RelatedSeriesID = Column(String, ForeignKey('dataset_series_metadata.SeriesID'), nullable=False)
+
+    # Relationship type: 'Superseries', 'Subseries', or 'SameStudy'
+    RelationshipType = Column(Enum("Superseries", "Subseries", "SameStudy", name="relationship_type"), nullable=False)
+
+    # Back-populates relationships
+    Series = relationship("DatasetSeriesMetadata", back_populates="RelatedDatasetsRelationships", foreign_keys=[SeriesID])
+
+    # Add indexes for faster lookups on key columns
+    __table_args__ = (
+        Index('idx_related_series_id', 'RelatedSeriesID'),  # Index for RelatedSeriesID
+        Index('idx_relationship_type', 'RelationshipType'),  # Index for RelationshipType
+    )
+
+    def __repr__(self):
+        return f"<RelatedDatasets(SeriesID={self.SeriesID}, RelatedSeriesID={self.RelatedSeriesID}, RelationshipType={self.RelationshipType})>"
 
 
 class GeoMetadataLog(Base):
@@ -125,6 +170,11 @@ class GeoMetadataLog(Base):
     Message = Column(Text, nullable=True)  # Detailed message or description
     FileNames = Column(JSON, nullable=True)  # List of file names associated with the GEO ID
     Timestamp = Column(Date, nullable=False)  # Timestamp for the log entry
+
+    # Add index to GeoID for faster lookups
+    __table_args__ = (
+        Index('idx_geo_id', 'GeoID'),  # Index for GeoID
+    )
 
     def __repr__(self):
         return f"<GeoMetadataLog(GeoID={self.GeoID}, Status={self.Status})>"
