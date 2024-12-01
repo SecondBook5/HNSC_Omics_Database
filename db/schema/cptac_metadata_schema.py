@@ -24,9 +24,11 @@ from sqlalchemy import (
     String,
     Integer,
     JSON,
+    ForeignKey,
     Index,
     UniqueConstraint,
 )
+from sqlalchemy.orm import relationship
 from sqlalchemy.ext.declarative import declarative_base
 
 # Base class for SQLAlchemy ORM models
@@ -53,7 +55,9 @@ class CptacMetadata(Base):
     preview_features = Column(JSON, nullable=True)  # First 10 feature names
     preview_samples = Column(JSON, nullable=True)  # First 10 sample names
 
-    # Constraints
+    # Relationship to CptacColumns
+    columns = relationship("CptacColumns", back_populates="metadata_ref", cascade="all, delete")
+
     __table_args__ = (
         UniqueConstraint("data_type", "source", name="uq_data_type_source"),  # Ensure uniqueness
         Index("idx_data_type", "data_type"),  # Optimize querying by data type
@@ -66,4 +70,37 @@ class CptacMetadata(Base):
             f"source={self.source}, num_samples={self.num_samples}, num_features={self.num_features}, "
             f"description={self.description}, preview_features={self.preview_features}, "
             f"preview_samples={self.preview_samples})>"
+        )
+
+
+class CptacColumns(Base):
+    """
+    Represents individual column names for a CPTAC dataset.
+    """
+    __tablename__ = "cptac_columns"
+
+    # Primary Key: Unique identifier for each column
+    id = Column(Integer, primary_key=True, autoincrement=True)
+
+    # Foreign Key: Links to the CptacMetadata table
+    metadata_id = Column(Integer, ForeignKey("cptac_metadata.id", ondelete="CASCADE"), nullable=False)
+
+    # Column-specific information
+    column_name = Column(String, nullable=False)  # Name of the column
+    data_type = Column(String, nullable=True)  # Data type of the column (e.g., String, Integer)
+    description = Column(String, nullable=True)  # Description or context for the column
+
+    # Relationship back to CptacMetadata
+    metadata_ref = relationship("CptacMetadata", back_populates="columns")
+
+    __table_args__ = (
+        UniqueConstraint("metadata_id", "column_name", name="uq_metadata_column"),  # Ensure uniqueness per dataset
+        Index("idx_metadata_id", "metadata_id"),  # Optimize querying by metadata ID
+        Index("idx_column_name", "column_name"),  # Optimize querying by column name
+    )
+
+    def __repr__(self):
+        return (
+            f"<CptacColumns(id={self.id}, metadata_id={self.metadata_id}, "
+            f"column_name={self.column_name}, data_type={self.data_type}, description={self.description})>"
         )
