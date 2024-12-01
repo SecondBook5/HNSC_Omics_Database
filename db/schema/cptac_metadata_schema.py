@@ -5,18 +5,26 @@ Overview:
     - Captures detailed metadata for datasets from the CPTAC resource.
     - Tracks dataset-level information (data type, source, number of samples/features).
     - Includes previews of features and samples for quick inspection.
+    - Consolidates grouped column metadata into a compact JSON format to minimize row count.
 
 Key Features:
     - `CptacMetadata`: Main table describing datasets by type and source, including metadata previews.
+    - `CptacColumns`: Stores grouped column metadata as JSON for each dataset.
 
 Why This Design:
-    - Simplifies schema by consolidating previews directly into the `CptacMetadata` table.
+    - Reduces storage redundancy by consolidating grouped column data in JSON format.
     - Optimized for querying datasets and quickly previewing their structure.
-    - Reduces storage redundancy while maintaining metadata integrity.
+    - Efficiently supports datasets with thousands of columns while maintaining metadata integrity.
+
+Benefits:
+    - Compact storage reduces the number of rows in the database.
+    - JSON format allows for flexible additions and handling of nested metadata structures.
+    - Prepares data for efficient use in memory-mapped data structures like hash maps.
 
 Future Expansions:
     - Add versioning or description fields to track dataset updates.
     - Incorporate relationships to clinical or multi-omics datasets.
+    - Extend column-level metadata to include nested metadata for complex data hierarchies.
 """
 
 from sqlalchemy import (
@@ -56,7 +64,7 @@ class CptacMetadata(Base):
     preview_samples = Column(JSON, nullable=True)  # First 10 sample names
 
     # Relationship to CptacColumns
-    columns = relationship("CptacColumns", back_populates="metadata_ref", cascade="all, delete")
+    column_metadata = relationship("CptacColumns", back_populates="dataset", cascade="all, delete-orphan")
 
     __table_args__ = (
         UniqueConstraint("data_type", "source", name="uq_data_type_source"),  # Ensure uniqueness
@@ -75,32 +83,30 @@ class CptacMetadata(Base):
 
 class CptacColumns(Base):
     """
-    Represents individual column names for a CPTAC dataset.
+    Represents grouped column data stored as JSON for patient-related datasets.
     """
     __tablename__ = "cptac_columns"
 
-    # Primary Key: Unique identifier for each column
+    # Primary Key
     id = Column(Integer, primary_key=True, autoincrement=True)
 
-    # Foreign Key: Links to the CptacMetadata table
-    metadata_id = Column(Integer, ForeignKey("cptac_metadata.id", ondelete="CASCADE"), nullable=False)
+    # Foreign Key: Link to the parent dataset metadata
+    dataset_id = Column(Integer, ForeignKey("cptac_metadata.id"), nullable=False)
 
-    # Column-specific information
-    column_name = Column(String, nullable=False)  # Name of the column
-    data_type = Column(String, nullable=True)  # Data type of the column (e.g., String, Integer)
-    description = Column(String, nullable=True)  # Description or context for the column
+    # Grouped column data
+    column_data = Column(JSON, nullable=False)  # JSON object containing column groups
+    data_type = Column(String, nullable=False)  # Data type (e.g., proteomics, clinical)
+    description = Column(String, nullable=True)  # Optional description of the dataset
 
-    # Relationship back to CptacMetadata
-    metadata_ref = relationship("CptacMetadata", back_populates="columns")
+    # Relationships
+    dataset = relationship("CptacMetadata", back_populates="column_metadata")
 
     __table_args__ = (
-        UniqueConstraint("metadata_id", "column_name", name="uq_metadata_column"),  # Ensure uniqueness per dataset
-        Index("idx_metadata_id", "metadata_id"),  # Optimize querying by metadata ID
-        Index("idx_column_name", "column_name"),  # Optimize querying by column name
+        Index("idx_dataset_id", "dataset_id"),  # Optimize queries by dataset ID
     )
 
     def __repr__(self):
         return (
-            f"<CptacColumns(id={self.id}, metadata_id={self.metadata_id}, "
-            f"column_name={self.column_name}, data_type={self.data_type}, description={self.description})>"
+            f"<CptacColumns(id={self.id}, dataset_id={self.dataset_id}, "
+            f"data_type={self.data_type}, column_data={self.column_data}, description={self.description})>"
         )

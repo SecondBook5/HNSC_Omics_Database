@@ -1,0 +1,17 @@
+erDiagram
+    CptacMetadata {
+        Integer id PK
+        String data_type
+        String source
+        Integer num_samples
+        Integer num_features
+        String description
+        JSON preview_features
+        JSON preview_samples
+    }
+    CptacColumns {
+        Integer id PK
+        Integer metadata_id FK
+        String column_name
+    }
+    CptacMetadata ||--o{ CptacColumns : "has"
