@@ -62,8 +62,22 @@ class CPTACDataIngestor:
             ignore_index=False
         ).reset_index()  # Reset index to maintain sample IDs
 
-        # Rename columns for clarity
-        melted_df.rename(columns={"index": "sample_id"}, inplace=True)
+        # Rename the original index to 'sample_id' for consistency
+        if "index" in melted_df.columns:
+            melted_df.rename(columns={"index": "sample_id"}, inplace=True)
+        elif "Patient_ID" in melted_df.columns:
+            melted_df.rename(columns={"Patient_ID": "sample_id"}, inplace=True)
+        else:
+            logger.error("Neither 'index' nor 'Patient_ID' found for renaming to 'sample_id'.")
+            raise KeyError("Missing required column for renaming to 'sample_id'.")
+
+        # Debugging: Verify the DataFrame structure
+        logger.debug(f"Flattened DataFrame structure: {melted_df.head()}")
+
+        # Ensure 'sample_id' exists
+        if "sample_id" not in melted_df.columns:
+            logger.error("The column 'sample_id' is missing after melting the DataFrame.")
+            raise KeyError("The column 'sample_id' is required but missing.")
 
         # Initial count of sample-protein pairs
         initial_pairs = len(melted_df)
@@ -85,6 +99,9 @@ class CPTACDataIngestor:
         logger.info(f"Initial sample-protein pairs: {initial_pairs}")
         logger.info(f"Remaining sample-protein pairs: {len(melted_df)}")
         logger.info(f"Dropped sample-protein pairs: {num_pairs_dropped}")
+
+        # Final verification
+        logger.debug(f"Final DataFrame structure after preprocessing: {melted_df.head()}")
 
         return melted_df
 
