@@ -1,7 +1,6 @@
 # File: utils/connection_checker.py
 # This script provides functionality to check connections to PostgreSQL and MongoDB databases
-# with retry logic to handle transient connection issues. It uses connection functions from db_config.py,
-# keeping configuration centralized and enhancing modularity.
+# with retry logic, enhanced error handling, exponential backoff for retries, and environment variable validation.
 
 import time  # Import the time module for delays between retry attempts
 import logging  # Import the logging module to log connection status
@@ -29,25 +28,43 @@ class DatabaseConnectionError(Exception):
             db_type (str): The type of the database that caused the failure.
             message (str): Description of the connection failure (default: "Database connection failed").
         """
-        self.db_type = db_type
-        super().__init__(f"{message}: {db_type}")
+        self.db_type = db_type  # Store the database type that caused the error
+        super().__init__(f"{message}: {db_type}")  # Format the error message
 
 
 # Configure logging settings
 log_level = logging.DEBUG if os.getenv("DEBUG", "False").lower() == "true" else logging.INFO
 log_file = os.getenv("LOG_FILE", None)  # Optional log file location from environment variables
 logging.basicConfig(
-    level=log_level,
-    format='%(asctime)s - %(levelname)s - %(message)s',
+    level=log_level,  # Set the log level based on the environment variable
+    format='%(asctime)s - %(levelname)s - %(message)s',  # Define the log format
     filename=log_file if log_file else None  # Log to a file if specified, otherwise log to the console
 )
 
 
+def get_env_variable(key: str, default=None):
+    """
+    Fetches and validates an environment variable.
+
+    Args:
+        key (str): Environment variable key to fetch.
+        default: Default value if the variable is not set.
+
+    Returns:
+        str: Value of the environment variable.
+
+    Raises:
+        RuntimeError: If the environment variable is missing and no default is provided.
+    """
+    value = os.getenv(key, default)  # Retrieve the environment variable value
+    if value is None:  # Check if the value is None and no default is provided
+        raise RuntimeError(f"Environment variable '{key}' is required but not set.")  # Raise an error
+    return value  # Return the environment variable value
+
+
 class DatabaseConnectionChecker:
     """
-    Checks the connection to PostgreSQL and MongoDB databases with retry logic.
-    This class provides methods to verify connections to PostgreSQL and MongoDB,
-    including retry mechanisms to handle transient connection failures.
+    Checks the connection to PostgreSQL and MongoDB databases with retry logic and exponential backoff.
     """
 
     def __init__(self, retries: int = 3, delay: int = 2) -> None:
@@ -58,162 +75,90 @@ class DatabaseConnectionChecker:
             retries (int): Maximum number of retry attempts.
             delay (int): Delay (in seconds) between retry attempts.
         """
-        self.retries: int = retries  # Set the number of retries for failed connections
-        self.delay: int = delay  # Set the delay (in seconds) between each retry attempt
+        self.retries = max(retries, 1)  # Ensure retries are at least 1
+        self.delay = max(delay, 0)  # Ensure delay is non-negative
 
-    def check_postgresql_connection(self, retries: int = None, delay: int = None) -> bool:
+    def check_postgresql_connection(self) -> bool:
         """
         Attempts to connect to PostgreSQL using the engine from db_config with retry logic.
 
-        Args:
-            retries (int, optional): Number of retry attempts (overrides the default if specified).
-            delay (int, optional): Delay between retries (overrides the default if specified).
-
         Returns:
             bool: True if the connection is successful, False otherwise.
 
         Raises:
             DatabaseConnectionError: If the connection fails after the maximum number of retries.
         """
-        retries = retries or self.retries
-        delay = delay or self.delay
-        for attempt in range(1, retries + 1):  # Loop for the specified number of retries
+        for attempt in range(1, self.retries + 1):  # Loop for the specified number of retries
             try:
-                engine = get_postgres_engine()
-                if engine is None:
+                engine = get_postgres_engine()  # Retrieve the PostgreSQL engine
+                if engine is None:  # Check if the engine was not created successfully
                     logging.error("PostgreSQL engine could not be created. Check environment variables.")
                     return False
-                with engine.connect() as conn:
-                    conn.execute(text("SELECT 1"))
-                logging.info("PostgreSQL connection successful.")
-                return True
+                with engine.connect() as conn:  # Use the engine to establish a connection
+                    conn.execute(text("SELECT 1"))  # Execute a simple query to validate the connection
+                logging.info("PostgreSQL connection successful.")  # Log success
+                return True  # Return True for successful connection
             except OperationalError as e:  # Handle operational errors during connection
                 logging.warning(
-                    f"Attempt {attempt}: PostgreSQL connection failed. Error: {e}. Retrying in {delay} seconds..."
+                    f"Attempt {attempt}: PostgreSQL connection failed. Error: {e}. Retrying in {self.delay * (2 ** (attempt - 1))} seconds..."
                 )
-                time.sleep(delay)  # Delay for the specified time before retrying
+                time.sleep(self.delay * (2 ** (attempt - 1)))  # Apply exponential backoff
         raise DatabaseConnectionError("PostgreSQL")  # Raise a custom exception if all retries fail
 
-    def check_postgresql_context(self, retries: int = None, delay: int = None) -> bool:
-        """
-        Attempts to connect to PostgreSQL using the context manager from db_config.
-
-        Args:
-            retries (int, optional): Number of retry attempts (overrides the default if specified).
-            delay (int, optional): Delay between retries (overrides the default if specified).
-
-        Returns:
-            bool: True if the connection is successful, False otherwise.
-
-        Raises:
-            DatabaseConnectionError: If the connection fails after the maximum number of retries.
-        """
-        retries = retries or self.retries
-        delay = delay or self.delay
-        for attempt in range(1, retries + 1):  # Loop for the specified number of retries
-            try:
-                with get_session_context() as session:
-                    session.execute(text("SELECT 1"))  # Execute a simple query to validate the connection
-                logging.info("PostgreSQL context-managed connection successful.")
-                return True
-            except OperationalError as e:  # Handle operational errors during connection
-                logging.warning(
-                    f"Attempt {attempt}: PostgreSQL context-managed connection failed. Error: {e}. Retrying in {delay} seconds..."
-                )
-                time.sleep(delay)  # Delay for the specified time before retrying
-        raise DatabaseConnectionError("PostgreSQL (context-managed)")  # Raise a custom exception if all retries fail
-
-    def check_mongodb_connection(self, retries: int = None, delay: int = None) -> bool:
+    def check_mongodb_connection(self) -> bool:
         """
         Attempts to connect to MongoDB using the client from db_config with retry logic.
 
-        Args:
-            retries (int, optional): Number of retry attempts (overrides the default if specified).
-            delay (int, optional): Delay between retries (overrides the default if specified).
-
         Returns:
             bool: True if the connection is successful, False otherwise.
 
         Raises:
             DatabaseConnectionError: If the connection fails after the maximum number of retries.
         """
-        retries = retries or self.retries
-        delay = delay or self.delay
-        for attempt in range(1, retries + 1):  # Loop for the specified number of retries
+        for attempt in range(1, self.retries + 1):  # Loop for the specified number of retries
             try:
-                client = get_mongo_client()
-                if client is None:
+                client = get_mongo_client()  # Retrieve the MongoDB client
+                if client is None:  # Check if the client was not created successfully
                     logging.error("MongoDB client could not be created. Check environment variables.")
                     return False
                 client.admin.command('ping')  # Send a ping command to validate the connection
-                logging.info("MongoDB connection successful.")
-                return True
+                logging.info("MongoDB connection successful.")  # Log success
+                return True  # Return True for successful connection
             except ConnectionFailure as e:  # Handle connection failures
                 logging.warning(
-                    f"Attempt {attempt}: MongoDB connection failed. Error: {e}. Retrying in {delay} seconds..."
+                    f"Attempt {attempt}: MongoDB connection failed. Error: {e}. Retrying in {self.delay * (2 ** (attempt - 1))} seconds..."
                 )
-                time.sleep(delay)  # Delay for the specified time before retrying
+                time.sleep(self.delay * (2 ** (attempt - 1)))  # Apply exponential backoff
         raise DatabaseConnectionError("MongoDB")  # Raise a custom exception if all retries fail
-
-    def check_mongodb_context(self, retries: int = None, delay: int = None) -> bool:
-        """
-        Attempts to connect to MongoDB using the context manager from db_config.
-
-        Args:
-            retries (int, optional): Number of retry attempts (overrides the default if specified).
-            delay (int, optional): Delay between retries (overrides the default if specified).
-
-        Returns:
-            bool: True if the connection is successful, False otherwise.
-
-        Raises:
-            DatabaseConnectionError: If the connection fails after the maximum number of retries.
-        """
-        retries = retries or self.retries
-        delay = delay or self.delay
-        for attempt in range(1, retries + 1):  # Loop for the specified number of retries
-            try:
-                with get_mongo_context() as client:
-                    client.admin.command('ping')  # Send a ping command to validate the connection
-                logging.info("MongoDB context-managed connection successful.")
-                return True
-            except ConnectionFailure as e:  # Handle connection failures
-                logging.warning(
-                    f"Attempt {attempt}: MongoDB context-managed connection failed. Error: {e}. Retrying in {delay} seconds..."
-                )
-                time.sleep(delay)  # Delay for the specified time before retrying
-        raise DatabaseConnectionError("MongoDB (context-managed)")  # Raise a custom exception if all retries fail
 
     def check_all_connections(self):
         """
-        Checks all database connections (PostgreSQL, MongoDB, and their context-managed versions).
+        Checks all database connections (PostgreSQL and MongoDB).
 
         Returns:
             bool: True if all connections are successful, False otherwise.
         """
         results = {
             "postgresql": self.check_postgresql_connection(),
-            "postgresql_context": self.check_postgresql_context(),
             "mongodb": self.check_mongodb_connection(),
-            "mongodb_context": self.check_mongodb_context(),
         }
-        for db, status in results.items():
-            logging.info(f"{db} connection status: {'SUCCESS' if status else 'FAILED'}")
+        for db, status in results.items():  # Iterate over connection results
+            logging.info(f"{db} connection status: {'SUCCESS' if status else 'FAILED'}")  # Log status for each database
         return all(results.values())  # Return True only if all connections are successful
 
 
 if __name__ == "__main__":
     # Initialize the DatabaseConnectionChecker with retry parameters from environment variables
     checker = DatabaseConnectionChecker(
-        retries=int(os.getenv("DB_RETRIES", 3)),  # Default retries to 3 if not set
-        delay=int(os.getenv("DB_DELAY", 2))  # Default delay to 2 seconds if not set
+        retries=int(get_env_variable("DB_RETRIES", 3)),  # Get retries from environment variable with default 3
+        delay=int(get_env_variable("DB_DELAY", 2))  # Get delay from environment variable with default 2 seconds
     )
 
     # Run all connection checks and log the results
     try:
-        if checker.check_all_connections():
-            logging.info("All database connections (including context-managed) are successful.")
+        if checker.check_all_connections():  # Check all connections
+            logging.info("All database connections are successful.")  # Log success
         else:
-            logging.error("Some database connections failed.")
-    except DatabaseConnectionError as e:
-        logging.critical(f"Critical failure: {e}")
+            logging.error("Some database connections failed.")  # Log failure
+    except DatabaseConnectionError as e:  # Handle connection errors
+        logging.critical(f"Critical failure: {e}")  # Log critical failure
