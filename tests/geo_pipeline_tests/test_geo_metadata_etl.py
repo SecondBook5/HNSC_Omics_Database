@@ -6,7 +6,7 @@ from sqlalchemy import create_engine  # SQLAlchemy engine creation
 from unittest.mock import patch  # Mocking external dependencies
 from pipeline.geo_pipeline.geo_metadata_etl import GeoMetadataETL  # Class to test
 from pipeline.geo_pipeline.geo_file_handler import GeoFileHandler  # File handler dependency
-from db.schema.geo_metadata_schema import DatasetSeriesMetadata, DatasetSampleMetadata  # Database schema
+from db.schema.geo_metadata_schema import GeoSeriesMetadata, GeoSampleMetadata  # Database schema
 from lxml import etree  # XML parsing
 import json  # JSON handling
 
@@ -37,16 +37,16 @@ def db_session(engine):
         Session: A SQLAlchemy session instance for the test.
     """
     # Create tables for the session
-    DatasetSeriesMetadata.metadata.create_all(engine)
-    DatasetSampleMetadata.metadata.create_all(engine)
+    GeoSeriesMetadata.metadata.create_all(engine)
+    GeoSampleMetadata.metadata.create_all(engine)
     # Create a session
     Session = sessionmaker(bind=engine)
     session = Session()
     yield session
     # Tear down the session
     session.close()
-    DatasetSeriesMetadata.metadata.drop_all(engine)
-    DatasetSampleMetadata.metadata.drop_all(engine)
+    GeoSeriesMetadata.metadata.drop_all(engine)
+    GeoSampleMetadata.metadata.drop_all(engine)
 
 
 @pytest.fixture
@@ -211,11 +211,11 @@ def test_parse_and_stream(db_session, valid_miniml_file, valid_template_file, en
         extractor.parse_and_stream()
 
         # Validate the Series metadata
-        series = db_session.query(DatasetSeriesMetadata).filter_by(SeriesID="GSE123456").first()
+        series = db_session.query(GeoSeriesMetadata).filter_by(SeriesID="GSE123456").first()
         assert series is not None, "Series metadata was not found in the database."
         assert series.Title == "Test Series"
 
         # Validate the Sample metadata
-        sample = db_session.query(DatasetSampleMetadata).filter_by(SampleID="GSM123456").first()
+        sample = db_session.query(GeoSampleMetadata).filter_by(SampleID="GSM123456").first()
         assert sample is not None, "Sample metadata was not found in the database."
         assert sample.Title == "Test Sample"
