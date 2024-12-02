@@ -1,14 +1,12 @@
-# File: tests/geo_pipeline_tests/test_geo_metadata_etl.py
-
-import pytest  # Testing framework
-from sqlalchemy.orm import sessionmaker  # SQLAlchemy session manager
-from sqlalchemy import create_engine  # SQLAlchemy engine creation
-from unittest.mock import patch  # Mocking external dependencies
-from pipeline.geo_pipeline.geo_metadata_etl import GeoMetadataETL  # Class to test
-from pipeline.geo_pipeline.geo_file_handler import GeoFileHandler  # File handler dependency
-from db.schema.geo_metadata_schema import GeoSeriesMetadata, GeoSampleMetadata  # Database schema
-from lxml import etree  # XML parsing
-import json  # JSON handling
+import pytest
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy import create_engine
+from unittest.mock import patch
+from pipeline.geo_pipeline.geo_metadata_etl import GeoMetadataETL
+from pipeline.geo_pipeline.geo_file_handler import GeoFileHandler
+from db.schema.geo_metadata_schema import GeoSeriesMetadata, GeoSampleMetadata
+from lxml import etree
+import json
 
 
 # Define an in-memory SQLite database URL for testing
@@ -21,8 +19,6 @@ TEST_DB_URL = "sqlite:///:memory:"
 def engine():
     """
     Create an SQLite in-memory database engine for testing.
-    Returns:
-        Engine: SQLAlchemy engine instance.
     """
     return create_engine(TEST_DB_URL, connect_args={"check_same_thread": False})
 
@@ -31,19 +27,12 @@ def engine():
 def db_session(engine):
     """
     Set up a database session for tests and tear it down afterward.
-    Args:
-        engine: The in-memory SQLite database engine.
-    Yields:
-        Session: A SQLAlchemy session instance for the test.
     """
-    # Create tables for the session
     GeoSeriesMetadata.metadata.create_all(engine)
     GeoSampleMetadata.metadata.create_all(engine)
-    # Create a session
     Session = sessionmaker(bind=engine)
     session = Session()
     yield session
-    # Tear down the session
     session.close()
     GeoSeriesMetadata.metadata.drop_all(engine)
     GeoSampleMetadata.metadata.drop_all(engine)
@@ -53,12 +42,7 @@ def db_session(engine):
 def valid_miniml_file(tmp_path):
     """
     Create a valid MINiML XML file for testing.
-    Args:
-        tmp_path: Temporary directory fixture for file creation.
-    Returns:
-        str: Path to the temporary MINiML XML file.
     """
-    # Define XML content for testing
     content = """
     <MINiML xmlns="http://www.ncbi.nlm.nih.gov/geo/info/MINiML">
         <Series>
@@ -72,7 +56,6 @@ def valid_miniml_file(tmp_path):
         </Sample>
     </MINiML>
     """
-    # Write content to a temporary file
     file_path = tmp_path / "GSE123456_family.xml"
     file_path.write_text(content)
     return str(file_path)
@@ -82,12 +65,7 @@ def valid_miniml_file(tmp_path):
 def valid_template_file(tmp_path):
     """
     Create a valid JSON template file for testing field mappings.
-    Args:
-        tmp_path: Temporary directory fixture for file creation.
-    Returns:
-        str: Path to the temporary JSON template file.
     """
-    # Define field mappings for Series and Sample
     template_content = {
         "Series": {
             "Title": ".//geo:Title",
@@ -99,7 +77,6 @@ def valid_template_file(tmp_path):
             "Characteristics": ".//geo:Characteristics"
         }
     }
-    # Write the template to a temporary file
     template_path = tmp_path / "template.json"
     template_path.write_text(json.dumps(template_content))
     return str(template_path)
@@ -109,18 +86,11 @@ def valid_template_file(tmp_path):
 def file_handler(tmp_path):
     """
     Create a GeoFileHandler instance for managing file operations during tests.
-    Args:
-        tmp_path: Temporary directory fixture.
-    Returns:
-        GeoFileHandler: An instance of the file handler.
     """
-    # Create a temporary GEO IDs file
     geo_ids_file = tmp_path / "geo_ids.txt"
     geo_ids_file.write_text("GSE123456\n")
-    # Create an output directory
     output_dir = tmp_path / "output"
     output_dir.mkdir()
-    # Return a GeoFileHandler instance
     return GeoFileHandler(geo_ids_file=str(geo_ids_file), output_dir=str(output_dir))
 
 
@@ -129,19 +99,13 @@ def file_handler(tmp_path):
 def test_initialization(valid_miniml_file, valid_template_file, file_handler):
     """
     Test the initialization of GeoMetadataETL.
-    Args:
-        valid_miniml_file: Path to a valid MINiML file fixture.
-        valid_template_file: Path to a valid template file fixture.
-        file_handler: GeoFileHandler instance for managing file operations.
     """
-    # Initialize the GeoMetadataETL class
     extractor = GeoMetadataETL(
         file_path=valid_miniml_file,
         template_path=valid_template_file,
         debug_mode=True,
         file_handler=file_handler
     )
-    # Validate the attributes
     assert extractor.file_path == valid_miniml_file
     assert extractor.template_path == valid_template_file
     assert extractor.debug_mode is True
@@ -150,72 +114,49 @@ def test_initialization(valid_miniml_file, valid_template_file, file_handler):
 def test_validate_xml(valid_miniml_file, valid_template_file, file_handler):
     """
     Test XML validation to ensure the file is well-formed.
-    Args:
-        valid_miniml_file: Path to a valid MINiML file fixture.
-        valid_template_file: Path to a valid template file fixture.
-        file_handler: GeoFileHandler instance for managing file operations.
     """
-    # Initialize the GeoMetadataETL class
     extractor = GeoMetadataETL(valid_miniml_file, valid_template_file, file_handler=file_handler)
-    # Ensure XML validation does not raise exceptions
     try:
         extractor._validate_xml()
     except Exception as e:
-        pytest.fail(f"XML validation failed with error: {e}")
+        pytest.fail(f"XML validation failed: {e}")
 
 
 def test_extract_fields(valid_miniml_file, valid_template_file, file_handler):
     """
     Test field extraction from XML elements using the template.
-    Args:
-        valid_miniml_file: Path to a valid MINiML file fixture.
-        valid_template_file: Path to a valid template file fixture.
-        file_handler: GeoFileHandler instance for managing file operations.
     """
-    # Initialize the GeoMetadataETL class
     extractor = GeoMetadataETL(valid_miniml_file, valid_template_file, file_handler=file_handler)
-    # Define XML namespaces
     ns = {'geo': 'http://www.ncbi.nlm.nih.gov/geo/info/MINiML'}
-    # Parse the XML file
     tree = etree.parse(valid_miniml_file)
-    # Find Series and Sample elements
     series_elem = tree.find(".//geo:Series", namespaces=ns)
     sample_elem = tree.find(".//geo:Sample", namespaces=ns)
 
-    # Extract fields for Series and Sample
     series_fields = extractor._extract_fields(series_elem, extractor.template['Series'], ns)
     sample_fields = extractor._extract_fields(sample_elem, extractor.template['Sample'], ns)
 
-    # Validate the extracted fields
     assert series_fields['Title'] == "Test Series"
     assert series_fields['SeriesID'] == "GSE123456"
     assert sample_fields['SampleID'] == "GSM123456"
     assert sample_fields['Characteristics'] == [{'tag': 'test-tag', 'value': 'Test Value'}]
 
 
-def test_parse_and_stream(db_session, valid_miniml_file, valid_template_file, engine, file_handler):
+@patch("pipeline.geo_pipeline.geo_metadata_etl.get_postgres_engine")
+def test_parse_and_stream(mock_engine, db_session, valid_miniml_file, valid_template_file, file_handler, engine):
     """
     Test parsing and streaming metadata to the database.
-    Args:
-        db_session: Database session fixture.
-        valid_miniml_file: Path to a valid MINiML file fixture.
-        valid_template_file: Path to a valid template file fixture.
-        engine: Database engine fixture.
-        file_handler: GeoFileHandler instance for managing file operations.
     """
-    # Patch the database engine to use in-memory SQLite
-    with patch("pipeline.geo_pipeline.geo_metadata_etl.get_postgres_engine", return_value=engine):
-        # Initialize GeoMetadataETL
+    mock_engine.return_value = engine
+    with patch("sqlalchemy.orm.sessionmaker", return_value=lambda: db_session):
         extractor = GeoMetadataETL(valid_miniml_file, valid_template_file, file_handler=file_handler)
-        # Run the ETL process
-        extractor.parse_and_stream()
+        processed_samples = extractor.parse_and_stream()
 
-        # Validate the Series metadata
+        assert processed_samples == 1
+
         series = db_session.query(GeoSeriesMetadata).filter_by(SeriesID="GSE123456").first()
-        assert series is not None, "Series metadata was not found in the database."
+        assert series is not None
         assert series.Title == "Test Series"
 
-        # Validate the Sample metadata
         sample = db_session.query(GeoSampleMetadata).filter_by(SampleID="GSM123456").first()
-        assert sample is not None, "Sample metadata was not found in the database."
+        assert sample is not None
         assert sample.Title == "Test Sample"
