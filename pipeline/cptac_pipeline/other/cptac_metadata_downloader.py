@@ -107,6 +107,6 @@ class CPTACMetadataDownloader:
 
 # Example usage
 if __name__ == "__main__":
-    OUTPUT_DIR = "../../resources/data/metadata/cptac_metadata"
+    OUTPUT_DIR = "../../../resources/metadata/cptac_metadata"
     downloader = CPTACMetadataDownloader(output_dir=OUTPUT_DIR, debug=True)
     downloader.download_and_process_metadata()

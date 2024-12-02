@@ -110,6 +110,7 @@ class CptacColumnsFiller:
                             dataset_id=metadata.id,
                             column_data=column_data_json,
                             data_type=metadata.data_type,
+                            source=metadata.source,  # Include source field
                             description=metadata.description,
                         ).on_conflict_do_nothing()
                         session.execute(stmt)

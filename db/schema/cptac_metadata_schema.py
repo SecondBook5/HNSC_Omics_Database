@@ -94,19 +94,23 @@ class CptacColumns(Base):
     dataset_id = Column(Integer, ForeignKey("cptac_metadata.id"), nullable=False)
 
     # Grouped column data
-    column_data = Column(JSON, nullable=False)  # JSON object containing column groups
-    data_type = Column(String, nullable=False)  # Data type (e.g., proteomics, clinical)
-    description = Column(String, nullable=True)  # Optional description of the dataset
+    column_data = Column(JSON, nullable=False, doc="JSON object containing column groups.")  # JSON object containing column groups
+    data_type = Column(String, nullable=False, doc="Data type (e.g., proteomics, clinical).")  # Data type (e.g., proteomics, clinical)
+    source = Column(String, nullable=False, doc="Source of the dataset (e.g., 'umich', 'bcm').")  # New field: Source of the data
+    description = Column(String, nullable=True, doc="Optional description of the dataset.")  # Optional description of the dataset
 
     # Relationships
     dataset = relationship("CptacMetadata", back_populates="column_metadata")
 
     __table_args__ = (
         Index("idx_dataset_id", "dataset_id"),  # Optimize queries by dataset ID
+        Index("idx_data_type", "data_type"),  # Optimize queries by data type
+        Index("idx_source", "source"),  # Optimize queries by source
     )
 
     def __repr__(self):
         return (
             f"<CptacColumns(id={self.id}, dataset_id={self.dataset_id}, "
-            f"data_type={self.data_type}, column_data={self.column_data}, description={self.description})>"
+            f"data_type={self.data_type}, source={self.source}, column_data={self.column_data}, "
+            f"description={self.description})>"
         )

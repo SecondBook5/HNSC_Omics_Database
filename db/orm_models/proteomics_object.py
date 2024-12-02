@@ -1,42 +1,57 @@
-# File: db/orm_models/proteomics_object.py
+from sqlalchemy import (
+    Column,
+    Integer,
+    String,
+    Float,
+    JSON,
+    ForeignKey,
+    UniqueConstraint,
+    Index
+)
+from sqlalchemy.ext.declarative import declarative_base
 
-from sqlalchemy import Column, String, Integer, Float, ForeignKey, Index, UniqueConstraint
-from sqlalchemy.orm import relationship
-from db.schema.base_cptac_data_model import BaseCptacDataModel
+# Import MappingTable for the ForeignKey reference
+from db.mapping_table import MappingTable
+
+Base = declarative_base()
 
 
-class Proteomics(BaseCptacDataModel):
+class Proteomics(Base):
     """
-    ORM model for Proteomics data.
-    Represents patient-specific protein quantification linked to MappingTable and metadata.
-    Extends BaseCptacDataModel for standardized metadata integration.
+    ORM model for storing proteomics data.
+    Captures quantification and mapping information for proteomics samples.
     """
     __tablename__ = "proteomics"
 
-    # Proteomics-Specific Fields
-    patient_id = Column(String, nullable=False, index=True, doc="Unique patient identifier (e.g., C3L-00006).")
-    protein_name = Column(String, nullable=False, index=True, doc="Human-readable protein name (e.g., ARF5).")
-    ensembl_id = Column(String, ForeignKey('mapping_table.ensembl_protein_id'), nullable=False, index=True,
-                        doc="Ensembl protein ID (e.g., ENSP00000000233.5).")
-    quantification = Column(Float, nullable=False, doc=(
-        "Quantification value for the protein in the patient sample. "
-        "For detailed information on the quantification methodology, refer to the CPTAC protocol: "
-        "'A Broad-Scale Quantitative Proteomic Analysis' (https://doi.org/10.1038/s41596-018-0006-9)."
-    ))
+    # Primary Key
+    id = Column(Integer, primary_key=True, autoincrement=True)
 
-    # Relationships
-    mapping = relationship("MappingTable", backref="proteomics_entries", uselist=False,
-                           doc="Reference to MappingTable for additional metadata.")
-    dataset_metadata = relationship("CptacMetadata", backref="proteomics_data", uselist=False,
-                                     doc="Reference to dataset metadata for this table.")
+    # Core Fields
+    sample_id = Column(String, nullable=False, index=True, doc="Unique identifier for the sample.")
+    protein_name = Column(String, nullable=False, index=True, doc="Name of the protein or gene ID.")
+    ensembl_gene_id = Column(String, nullable=True, index=True, doc="Ensembl Gene ID, if available.")
+    ensembl_protein_id = Column(String, nullable=True, index=True, doc="Ensembl Protein ID, if available.")
 
-    # Table-Level Constraints
+    # Quantification Data
+    quantification = Column(JSON, nullable=False, doc="JSON dictionary of quantification values by data source.")
+    aggregate_quantification = Column(Float, nullable=True, doc="Aggregate quantification value as determined by the user.")
+
+    # Metadata Fields
+    data_type = Column(String, nullable=True, index=True, doc="Type of data (e.g., proteomics).")
+    description = Column(String, nullable=True, doc="Additional description or metadata about the dataset.")
+
+    # Mapper Relationship
+    mapper_id = Column(Integer, ForeignKey("mapping_table.id", ondelete="CASCADE"), nullable=False, doc="Foreign key to the Mapping Table.")
+
+    # Constraints and Indexes
     __table_args__ = (
-        UniqueConstraint("patient_id", "protein_name", name="uq_patient_protein"),
-        Index("idx_protein_name", "protein_name"),
-        Index("idx_patient_protein", "patient_id", "protein_name")
+        UniqueConstraint("sample_id", "protein_name", name="uq_sample_protein"),
     )
 
     def __repr__(self):
-        return (f"<Proteomics(patient_id={self.patient_id}, protein_name={self.protein_name}, "
-                f"ensembl_id={self.ensembl_id}, quantification={self.quantification})>")
+        return (
+            f"<Proteomics(id={self.id}, sample_id={self.sample_id}, protein_name={self.protein_name}, "
+            f"ensembl_gene_id={self.ensembl_gene_id}, ensembl_protein_id={self.ensembl_protein_id}, "
+            f"quantification={self.quantification}, aggregate_quantification={self.aggregate_quantification}, "
+            f"data_type={self.data_type}, description={self.description}, mapper_id={self.mapper_id})>"
+        )

@@ -247,6 +247,28 @@ class Graph:
         # Check each edge of the start_vertex to see if it connects to end_vertex
         return any(edge.end == end_vertex for edge in self._adjacency_list[start_vertex].edges)
 
+    def get_adjacency_list(self) -> Dict[str, List[Edge]]:
+        """
+        Retrieve the adjacency list of the graph.
+
+        Returns:
+            Dict[str, List[Edge]]: A dictionary where each key is a vertex ID, and the value
+            is a list of edges originating from that vertex.
+        """
+        try:
+            # Construct a dictionary representation of the adjacency list
+            adjacency_list = {
+                vertex_id: vertex.edges
+                for vertex_id, vertex in self._adjacency_list.items()
+            }
+            # Log the successful retrieval of the adjacency list
+            logging.info("Adjacency list retrieved successfully.")
+            return adjacency_list
+        except Exception as e:
+            # Log any errors encountered during adjacency list retrieval
+            logging.error(f"Error retrieving adjacency list: {e}")
+            raise
+
     def bfs(self, start_vertex: str) -> List[str]:
         """
         Perform Breadth-First Search (BFS) starting from a given vertex.
@@ -327,47 +349,108 @@ class Graph:
             if edge.end not in visited:
                 self._dfs_recursive(edge.end, visited, result)
 
-    def detect_cycle(self) -> bool:
+    def detect_cycle(self, return_nodes: bool = False) -> Optional[bool | List[str]]:
         """
-        Detect cycles in the graph using DFS, returning True if a cycle is found.
-        Cycles are paths that start and end at the same vertex, and detecting them is
-        essential for checking whether a graph can be a Directed Acyclic Graph (DAG).
+        Detect cycles in the graph using DFS. Optionally, return nodes involved in the first cycle detected.
+
+        Args:
+            return_nodes: If True, return the nodes forming the cycle.
 
         Returns:
-            True if a cycle is detected, False otherwise.
+            bool: True if a cycle is detected, False otherwise (if return_nodes is False).
+            Optional[List[str]]: List of nodes forming a cycle (if return_nodes is True).
         """
-        # Initialize visited and recursion stack sets
-        visited, rec_stack = set(), set()
+        # Initialize visited set and recursion stack
+        visited, rec_stack = set(), []
 
-        # Helper function for cycle detection
-        def _detect_cycle(vertex: str) -> bool:
-            # Mark the vertex as visited and add it to the recursion stack
+        # Dictionary to map each vertex to its parent in the DFS tree
+        parent_map = {}
+
+        # Helper function for DFS cycle detection
+        def _dfs_cycle(vertex: str) -> Optional[List[str]]:
+            """
+            Recursive helper for detecting a cycle.
+
+            Args:
+                vertex: The current vertex being visited.
+
+            Returns:
+                Optional[List[str]]: Nodes in the cycle if found, None otherwise.
+            """
+            # Mark the current vertex as visited
             visited.add(vertex)
-            rec_stack.add(vertex)
 
-            # Check each neighbor
+            # Add the vertex to the recursion stack
+            rec_stack.append(vertex)
+
+            # Explore all neighbors of the current vertex
             for edge in self._adjacency_list[vertex].edges:
-                # If neighbor is unvisited, perform DFS on it
-                if edge.end not in visited and _detect_cycle(edge.end):
-                    return True
-                # If neighbor is in the recursion stack, a cycle exists
-                elif edge.end in rec_stack:
-                    return True
+                neighbor = edge.end
 
-            # Remove vertex from recursion stack on backtracking
-            rec_stack.remove(vertex)
-            return False
+                # If the neighbor is unvisited, continue DFS
+                if neighbor not in visited:
+                    # Map the neighbor's parent for cycle reconstruction
+                    parent_map[neighbor] = vertex
 
-        # Check each unvisited vertex in the graph
+                    # Recur to check for cycles in the neighbor's path
+                    cycle = _dfs_cycle(neighbor)
+
+                    # If a cycle is found, propagate it upwards
+                    if cycle:
+                        return cycle
+
+                # If the neighbor is in the recursion stack, a cycle exists
+                elif neighbor in rec_stack:
+                    if return_nodes:
+                        # Reconstruct the cycle by backtracking through the parent_map
+                        cycle_path = []
+                        current = vertex
+
+                        # Trace the path until the cycle is reconstructed
+                        while current != neighbor:
+                            cycle_path.append(current)
+                            current = parent_map[current]
+
+                        # Add the start and end of the cycle
+                        cycle_path.append(neighbor)
+                        cycle_path.append(vertex)
+
+                        # Return the reconstructed cycle path
+                        return cycle_path[::-1]
+                    else:
+                        return True
+
+            # Backtrack by removing the vertex from the recursion stack
+            rec_stack.pop()
+
+            # Return None if no cycle is found in this path
+            return None
+
+        # Iterate over all vertices in the graph
         for node in self._adjacency_list:
+            # Start DFS from unvisited vertices
             if node not in visited:
-                # Return True if a cycle is detected
-                if _detect_cycle(node):
-                    logging.info(f"Cycle detected starting at node '{node}'.")
-                    return True
+                result = _dfs_cycle(node)
 
-        # Return False if no cycle is found
-        return False
+                # If a cycle is found, return the result
+                if result:
+                    return result if return_nodes else True
+
+        # If no cycle is detected, return False or an empty list based on return_nodes
+        return [] if return_nodes else False
+
+    def get_cycle_nodes(self) -> Optional[List[str]]:
+        """
+        Retrieve nodes involved in a cycle if one exists.
+
+        Returns:
+            Optional[List[str]]: A list of nodes forming a cycle, or None if no cycle is found.
+        """
+        # Call detect_cycle with the return_nodes flag set to True
+        cycle_nodes = self.detect_cycle(return_nodes=True)
+
+        # If cycle_nodes is an empty list, return None for consistency
+        return cycle_nodes if cycle_nodes else None
 
     def export_to_json(self, file_path: str) -> None:
         """

@@ -1,40 +1,57 @@
-# File: db/orm_models/phosphoproteomics_object.py
+from sqlalchemy import (
+    Column,
+    String,
+    Float,
+    JSON,
+    ForeignKey,
+    UniqueConstraint,
+    Index,
+    Integer
+)
+from sqlalchemy.ext.declarative import declarative_base
 
-from sqlalchemy import Column, String, Float, ForeignKey, Index, UniqueConstraint
-from sqlalchemy.orm import relationship
-from db.schema.base_cptac_data_model import BaseCptacDataModel
+Base = declarative_base()
 
 
-class Phosphoproteomics(BaseCptacDataModel):
+class Phosphoproteomics(Base):
     """
-    ORM model for Phosphoproteomics data.
-    Represents patient-specific phosphoprotein quantification linked to MappingTable and metadata.
-    Extends BaseCptacDataModel for standardized metadata integration.
+    ORM model for storing phosphoproteomics data.
+    Captures quantification and mapping information for phosphoprotein samples.
     """
     __tablename__ = "phosphoproteomics"
 
-    # Phosphoproteomics-Specific Fields
-    patient_id = Column(String, nullable=False, index=True, doc="Unique patient identifier (e.g., C3L-00006).")
-    phosphoprotein_name = Column(String, nullable=False, index=True, doc="Human-readable phosphoprotein name (e.g., ARF5_S192).")
-    phosphorylation_site = Column(String, nullable=False, doc="The specific phosphorylation site (e.g., 'S192', 'Y705').")
-    ensembl_id = Column(String, ForeignKey('mapping_table.ensembl_protein_id'), nullable=False, index=True,
-                        doc="Ensembl protein ID (e.g., ENSP00000000233.5).")
-    quantification = Column(Float, nullable=False, doc="Quantification value for the phosphoprotein in the patient sample.")
+    # Primary Key
+    id = Column(Integer, primary_key=True, autoincrement=True)
 
-    # Relationships
-    mapping = relationship("MappingTable", backref="phosphoproteomics_entries", uselist=False,
-                           doc="Reference to MappingTable for additional metadata.")
-    dataset_metadata = relationship("CptacMetadata", backref="phosphoproteomics_data", uselist=False,
-                                     doc="Reference to dataset metadata for this table.")
+    # Core Fields
+    sample_id = Column(String, nullable=False, index=True, doc="Unique sample identifier.")
+    phosphoprotein_name = Column(String, nullable=False, index=True, doc="Name of the phosphoprotein (e.g., M6PR_S267).")
+    phosphorylation_site = Column(String, nullable=False, doc="The specific phosphorylation site (e.g., 'S267').")
+    sequence_window = Column(String, nullable=True, doc="Phosphorylation sequence window (e.g., 'DDQLGEESEERDDHL').")
+    ensembl_gene_id = Column(String, nullable=True, index=True, doc="Ensembl Gene ID, if available.")
+    ensembl_protein_id = Column(String, nullable=True, index=True, doc="Ensembl Protein ID, if available.")
 
-    # Table-Level Constraints
+    # Quantification Data
+    quantification = Column(JSON, nullable=False, doc="JSON dictionary of quantification values by data source.")
+    aggregate_quantification = Column(Float, nullable=True, doc="User-defined aggregate quantification value.")
+
+    # Metadata Fields
+    data_type = Column(String, nullable=True, index=True, doc="Type of data (e.g., phosphoproteomics).")
+    description = Column(String, nullable=True, doc="Additional description or metadata about the dataset.")
+
+    # Mapper Relationship
+    mapper_id = Column(Integer, ForeignKey("mapping_table.id", ondelete="CASCADE"), nullable=False, doc="Foreign key to the Mapping Table.")
+
+    # Table Constraints
     __table_args__ = (
-        UniqueConstraint("patient_id", "phosphoprotein_name", "phosphorylation_site", name="uq_patient_phosphoprotein_site"),
-        Index("idx_phosphoprotein_name", "phosphoprotein_name"),
-        Index("idx_patient_phosphoprotein_site", "patient_id", "phosphoprotein_name", "phosphorylation_site")
+        UniqueConstraint("sample_id", "phosphoprotein_name", "phosphorylation_site", name="uq_sample_phosphoprotein_site"),
     )
 
     def __repr__(self):
-        return (f"<Phosphoproteomics(patient_id={self.patient_id}, phosphoprotein_name={self.phosphoprotein_name}, "
-                f"phosphorylation_site={self.phosphorylation_site}, ensembl_id={self.ensembl_id}, "
-                f"quantification={self.quantification})>")
+        return (
+            f"<Phosphoproteomics(id={self.id}, sample_id={self.sample_id}, phosphoprotein_name={self.phosphoprotein_name}, "
+            f"phosphorylation_site={self.phosphorylation_site}, sequence_window={self.sequence_window}, "
+            f"ensembl_gene_id={self.ensembl_gene_id}, ensembl_protein_id={self.ensembl_protein_id}, "
+            f"quantification={self.quantification}, aggregate_quantification={self.aggregate_quantification}, "
+            f"data_type={self.data_type}, description={self.description}, mapper_id={self.mapper_id})>"
+        )

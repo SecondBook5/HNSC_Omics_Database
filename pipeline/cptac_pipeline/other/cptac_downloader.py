@@ -190,8 +190,8 @@ class CPTACDownloader(DataDownloader):
 
 # ---------------- Execution ----------------
 if __name__ == "__main__":
-    OUTPUT_DIR = "../../resources/data/raw/CPTAC"
-    MANIFEST_FILE = "../../resources/data/metadata/cptac_metadata/PDC_study_manifest_11182024_010526.csv"
+    OUTPUT_DIR = "../../../resources/data/raw/CPTAC"
+    MANIFEST_FILE = "../../../resources/metadata/cptac_metadata/PDC_study_manifest_11182024_010526.csv"
     downloader = CPTACDownloader(output_dir=OUTPUT_DIR, manifest_file=MANIFEST_FILE, max_workers=10)
     downloader.download_files()
     downloader.organize_files()
