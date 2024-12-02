@@ -27,13 +27,27 @@ class GeoFileHandler:
             compress_files (bool): If True, compress files instead of deleting them.
             logger: Logger instance for logging operations (default: centralized logger).
         """
-        # Store the path to the GEO IDs file
+        # Validate that the output directory path is not empty
+        if not output_dir:
+            raise ValueError("Output directory path cannot be empty.")
+
+        # Validate that the GEO IDs file exists if provided
+        if geo_ids_file and not os.path.isfile(geo_ids_file):
+            raise ValueError(f"Invalid GEO IDs file path: {geo_ids_file}")
+
+        # Store the GEO IDs file path
         self.geo_ids_file = geo_ids_file
-        # Define the output directory for file operations
+
+        # Ensure the output directory exists or create it
+        os.makedirs(output_dir, exist_ok=True)
+
+        # Store the output directory path
         self.output_dir = output_dir
-        # Specify whether to compress files instead of deleting them
+
+        # Store whether files should be compressed instead of deleted
         self.compress_files = compress_files
-        # Use the provided logger or configure a new centralized logger
+
+        # Configure a logger instance for logging operations
         self.logger = logger or configure_logger(
             name="GeoFileHandler",
             log_file="geo_file_handler.log",
@@ -41,16 +55,19 @@ class GeoFileHandler:
             output="both"
         )
 
+        # Log the initialization of the handler
+        self.logger.info(f"Initialized GeoFileHandler with output_dir={output_dir}, compress_files={compress_files}")
+
     def initialize_log_table(self) -> None:
         """
         Initializes the geo_metadata_log table by marking all GEO IDs as 'not_downloaded.'
         """
         try:
-            # Check if the GEO IDs file is provided
+            # Ensure the GEO IDs file is provided
             if not self.geo_ids_file:
                 raise ValueError("GEO IDs file must be provided for batch initialization.")
 
-            # Verify that the GEO IDs file exists
+            # Ensure the GEO IDs file exists
             if not os.path.exists(self.geo_ids_file):
                 raise FileNotFoundError(f"GEO IDs file not found: {self.geo_ids_file}")
 
@@ -99,7 +116,7 @@ class GeoFileHandler:
             # Construct the GEO directory path
             geo_dir = os.path.join(self.output_dir, geo_id)
 
-            # Ensure directory exists and validate file paths
+            # Ensure the GEO directory exists
             if not os.path.exists(geo_dir):
                 raise FileNotFoundError(f"Directory for GEO ID {geo_id} does not exist: {geo_dir}")
 
@@ -186,8 +203,7 @@ class GeoFileHandler:
 
     def clean_files(self, geo_id: str) -> None:
         """
-        Cleans up downloaded files for a specific GEO ID by either compressing or deleting them.
-        Verifies that the cleanup was successful.
+        Cleans up downloaded files for a specific GEO ID by compressing or deleting them.
 
         Args:
             geo_id (str): The GEO ID whose files are being cleaned.
@@ -195,7 +211,9 @@ class GeoFileHandler:
         # Construct the full path to the GEO ID's directory
         geo_dir = os.path.join(self.output_dir, geo_id)
 
-        # If the directory does not exist, log a warning and exit
+        # Debugging: Log the compress_files value
+        self.logger.debug(f"Compress files option is set to: {self.compress_files}")
+
         if not os.path.exists(geo_dir):
             self.logger.warning(f"No files found for GEO ID {geo_id}. Skipping cleanup.")
             return
@@ -204,6 +222,7 @@ class GeoFileHandler:
             if self.compress_files:
                 # Create a ZIP archive of the directory
                 zip_path = f"{geo_dir}.zip"
+                self.logger.debug(f"Attempting to create ZIP file at {zip_path}")
                 with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zipf:
                     for root, _, files in os.walk(geo_dir):
                         for file in files:

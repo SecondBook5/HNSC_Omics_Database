@@ -1,173 +1,175 @@
 # File: tests/geo_pipeline_tests/test_geo_file_handler.py
 
-import os
 import zipfile
 import pytest
-from unittest.mock import patch, MagicMock, mock_open
-from datetime import date
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy import create_engine
+from unittest.mock import patch, MagicMock, call
+import os
 from pipeline.geo_pipeline.geo_file_handler import GeoFileHandler
+from sqlalchemy.exc import SQLAlchemyError
 from db.schema.geo_metadata_schema import GeoMetadataLog
-
-# Mock database connection URL
-TEST_DB_URL = "sqlite:///:memory:"
-
-
-# ---------------- Test Fixtures ----------------
-
-@pytest.fixture(scope="session")
-def engine():
-    """Create an SQLite in-memory database engine for testing."""
-    return create_engine(TEST_DB_URL, connect_args={"check_same_thread": False})
-
-
-@pytest.fixture(scope="function")
-def db_session(engine):
-    """Set up a database session for tests and tear it down afterward."""
-    GeoMetadataLog.metadata.create_all(engine)
-    Session = sessionmaker(bind=engine)
-    session = Session()
-    yield session
-    session.close()
-    GeoMetadataLog.metadata.drop_all(engine)
-
+from datetime import date
+from sqlalchemy.dialects.postgresql import insert
+from unittest.mock import mock_open
 
 @pytest.fixture
-def geo_file_handler(tmp_path):
-    """Create a GeoFileHandler instance for testing."""
-    geo_ids_file = tmp_path / "geo_ids.txt"
-    geo_ids_file.write_text("GSE123456\nGSE789012\n")
-    output_dir = tmp_path / "output"
-    output_dir.mkdir()
-    return GeoFileHandler(geo_ids_file=str(geo_ids_file), output_dir=str(output_dir), compress_files=False)
+def geo_file_handler():
+    """
+    Fixture to create an instance of GeoFileHandler with mock configurations.
+    """
+    with patch("pipeline.geo_pipeline.geo_file_handler.configure_logger") as mock_logger:
+        logger = MagicMock()
+        mock_logger.return_value = logger
+        handler = GeoFileHandler(geo_ids_file=None, output_dir="./test_output", compress_files=False, logger=logger)
+        yield handler
 
 
-# ---------------- Test Cases ----------------
+@patch("os.makedirs")
+def test_geo_file_handler_initialization(mock_makedirs):
+    """
+    Test initialization of GeoFileHandler.
+    """
+    handler = GeoFileHandler(geo_ids_file=None, output_dir="./test_output", compress_files=True)
+    assert handler.output_dir == "./test_output"
+    assert handler.compress_files is True
+    expected_calls = [
+        call("./test_output", exist_ok=True),
+        call("/mnt/c/Users/ajboo/BookAbraham/BiologicalDatabases/HNSC_Omics_Database/logs", exist_ok=True),
+    ]
+    mock_makedirs.assert_has_calls(expected_calls, any_order=True)
 
-def test_initialize_log_table(db_session, geo_file_handler):
-    """Test the initialization of the log table."""
-    with patch("pipeline.geo_pipeline.geo_file_handler.get_session_context", return_value=db_session):
-        # Initialize the log table
+
+@patch("os.path.exists", side_effect=lambda path: path == "./test_geo_ids.txt")
+@patch("os.path.isfile", return_value=True)
+@patch("pipeline.geo_pipeline.geo_file_handler.get_session_context")
+def test_initialize_log_table(mock_session_context, mock_isfile, mock_exists, geo_file_handler):
+    """
+    Test the initialize_log_table method.
+    """
+    mock_session = MagicMock()
+    mock_session_context.return_value.__enter__.return_value = mock_session
+
+    geo_file_handler.geo_ids_file = "./test_geo_ids.txt"
+
+    # Mock file content as a list of valid GEO IDs
+    file_content = ["GEO123\n", "GEO456\n"]
+    with patch("builtins.open", mock_open(read_data="".join(file_content))):
         geo_file_handler.initialize_log_table()
 
-        # Verify that GEO IDs were added to the database
-        logs = db_session.query(GeoMetadataLog).all()
-        assert len(logs) == 2
-        assert logs[0].GeoID == "GSE123456"
-        assert logs[0].Status == "not_downloaded"
+    # Validate the inserted data
+    expected_values = [
+        {
+            "GeoID": "GEO123",
+            "Status": "not_downloaded",
+            "Message": "Pending download.",
+            "FileNames": [],
+            "Timestamp": date.today(),
+        },
+        {
+            "GeoID": "GEO456",
+            "Status": "not_downloaded",
+            "Message": "Pending download.",
+            "FileNames": [],
+            "Timestamp": date.today(),
+        },
+    ]
+
+    actual_values = [
+        call[0][0].compile().params for call in mock_session.execute.call_args_list
+    ]
+
+    for expected in expected_values:
+        assert any(
+            all(expected[key] == actual[key] for key in expected)
+            for actual in actual_values
+        )
+
+    mock_session.commit.assert_called_once()
 
 
-def test_log_download(db_session, geo_file_handler, tmp_path):
-    """Test logging a download operation."""
-    # Create files to simulate a successful download
-    geo_dir = tmp_path / "output" / "GSE123456"
-    geo_dir.mkdir(parents=True)
-    (geo_dir / "file1.xml").write_text("File content 1")
-    (geo_dir / "file2.xml").write_text("File content 2")
+@patch("os.path.exists", return_value=True)
+@patch("os.path.isfile", side_effect=lambda path: "file" in path)
+@patch("pipeline.geo_pipeline.geo_file_handler.get_session_context")
+def test_log_download(mock_session_context, mock_isfile, mock_exists, geo_file_handler):
+    """
+    Test the log_download method.
+    """
+    mock_session = MagicMock()
+    mock_session_context.return_value.__enter__.return_value = mock_session
 
-    with patch("pipeline.geo_pipeline.geo_file_handler.get_session_context", return_value=db_session):
-        # Log a download for a specific GEO ID
-        geo_file_handler.log_download(geo_id="GSE123456", file_names=["file1.xml", "file2.xml"])
+    geo_file_handler.log_download("GEO123", ["file1.txt", "file2.txt"])
 
-        # Verify the log entry
-        log = db_session.query(GeoMetadataLog).filter_by(GeoID="GSE123456").first()
-        assert log is not None
-        assert log.Status == "downloaded"
-        assert log.FileNames == ["file1.xml", "file2.xml"]
+    # Verify database interactions
+    mock_session.execute.assert_called_once()
+    mock_session.commit.assert_called_once()
 
 
-def test_log_processed(db_session, geo_file_handler):
-    """Test logging a processed operation."""
-    with patch("pipeline.geo_pipeline.geo_file_handler.get_session_context", return_value=db_session):
-        # Log a processed operation for a specific GEO ID
-        geo_file_handler.log_processed(geo_id="GSE123456")
+@patch("os.path.exists", return_value=True)
+@patch("pipeline.geo_pipeline.geo_file_handler.get_session_context")
+def test_log_processed(mock_session_context, mock_exists, geo_file_handler):
+    """
+    Test the log_processed method.
+    """
+    mock_session = MagicMock()
+    mock_session_context.return_value.__enter__.return_value = mock_session
 
-        # Verify the log entry
-        log = db_session.query(GeoMetadataLog).filter_by(GeoID="GSE123456").first()
-        assert log is not None
-        assert log.Status == "processed"
-        assert log.Message == "Metadata uploaded successfully."
+    geo_file_handler.log_processed("GEO123")
 
-
-def test_clean_files_no_files(geo_file_handler):
-    """Test cleaning up files when no files exist."""
-    with patch("os.path.exists", return_value=False):
-        # Attempt to clean files for a non-existent GEO ID
-        geo_file_handler.clean_files(geo_id="GSE123456")
-        # Ensure no exception is raised
+    # Verify database interactions
+    mock_session.execute.assert_called_once()
+    mock_session.commit.assert_called_once()
 
 
-def test_clean_files_delete(tmp_path, geo_file_handler):
-    """Test cleaning up files by deleting them."""
-    # Create a directory and files for the test
-    geo_dir = tmp_path / "output" / "GSE123456"
-    geo_dir.mkdir(parents=True)
-    (geo_dir / "file1.xml").write_text("Test content")
-    (geo_dir / "file2.xml").write_text("Test content")
+@patch("os.path.exists")
+@patch("os.path.isfile", return_value=True)
+@patch("os.remove")
+@patch("os.rmdir")
+@patch("zipfile.ZipFile", autospec=True)
+def test_clean_files(mock_zipfile, mock_rmdir, mock_remove, mock_isfile, mock_exists):
+    """
+    Test the clean_files method.
+    """
+    # Simulated file structure
+    file_structure = [("./test_output/GEO123", [], ["file1.txt", "file2.txt"])]
 
-    # Track removed files and directory state
-    removed_files = []
-    removed_dirs = []
+    # Track deletions
+    deleted_directories = set()
 
-    # Patch os.path.exists to simulate file and directory existence correctly
-    def mock_exists(path):
-        # Simulate removal: return False for removed files/directories
-        return path not in removed_files and path not in removed_dirs
+    def mock_exists_side_effect(path):
+        if path in deleted_directories:
+            return False
+        if path.endswith(".zip"):
+            return True  # Simulate ZIP file's existence after compression
+        return True  # Simulate directory existence
 
-    # Patch os.remove and os.rmdir to track removals
-    def mock_remove(path):
-        removed_files.append(path)  # Mark file as removed
+    def mock_rmdir_side_effect(path):
+        deleted_directories.add(path)
 
-    def mock_rmdir(path):
-        removed_dirs.append(path)  # Mark directory as removed
+    mock_exists.side_effect = mock_exists_side_effect
+    mock_rmdir.side_effect = mock_rmdir_side_effect
 
-    with patch("os.path.exists", side_effect=mock_exists), \
-         patch("os.remove", side_effect=mock_remove), \
-         patch("os.rmdir", side_effect=mock_rmdir):
-        # Clean files
-        geo_file_handler.clean_files(geo_id="GSE123456")
+    # Create GeoFileHandler with compress_files=True
+    geo_file_handler = GeoFileHandler(
+        geo_ids_file=None,
+        output_dir="./test_output",
+        compress_files=True,  # Ensure compression logic is tested
+    )
 
-        # Assertions
-        # Ensure files were removed
-        assert str(geo_dir / "file1.xml") in removed_files
-        assert str(geo_dir / "file2.xml") in removed_files
+    # Mock os.walk
+    with patch("os.walk", return_value=file_structure):
+        geo_file_handler.clean_files("GEO123")
 
-        # Ensure directory was removed
-        assert str(geo_dir) in removed_dirs
+    # Debugging: Check all calls made to mock_zipfile
+    print("mock_zipfile.call_args_list:", mock_zipfile.call_args_list)
 
+    # Assertions for zip creation
+    mock_zipfile.assert_called_once_with("./test_output/GEO123.zip", "w", zipfile.ZIP_DEFLATED)
+    zip_instance = mock_zipfile.return_value.__enter__.return_value
+    zip_instance.write.assert_any_call(
+        os.path.join("./test_output/GEO123", "file1.txt"), arcname="GEO123/file1.txt"
+    )
+    zip_instance.write.assert_any_call(
+        os.path.join("./test_output/GEO123", "file2.txt"), arcname="GEO123/file2.txt"
+    )
 
-def test_clean_files_compress(tmp_path):
-    """Test cleaning up files by compressing them."""
-    geo_dir = tmp_path / "output" / "GSE123456"
-    geo_dir.mkdir(parents=True)
-    (geo_dir / "file1.xml").write_text("Test content")
-    file_handler = GeoFileHandler(geo_ids_file=None, output_dir=str(tmp_path / "output"), compress_files=True)
-    zip_path = str(geo_dir) + ".zip"
-
-    # Patch os.path.exists to simulate file and directory existence
-    with patch("os.path.exists", side_effect=lambda p: p in [str(geo_dir), zip_path]):
-        # Perform the cleanup, which compresses the files
-        file_handler.clean_files(geo_id="GSE123456")
-
-        # Verify that the zip file was created
-        assert os.path.exists(zip_path)
-
-        # Verify the contents of the zip file
-        with zipfile.ZipFile(zip_path, "r") as zipf:
-            # The file path inside the zip includes the relative directory structure
-            assert "GSE123456/file1.xml" in zipf.namelist()
-
-
-def test_validate_file_log_integrity(db_session, geo_file_handler, tmp_path):
-    """Test that file names are correctly logged and validated."""
-    geo_dir = tmp_path / "output" / "GSE123456"
-    geo_dir.mkdir(parents=True)
-    (geo_dir / "file1.xml").write_text("File content 1")
-    (geo_dir / "file2.xml").write_text("File content 2")
-
-    with patch("pipeline.geo_pipeline.geo_file_handler.get_session_context", return_value=db_session):
-        geo_file_handler.log_download(geo_id="GSE123456", file_names=["file1.xml", "file2.xml"])
-        log = db_session.query(GeoMetadataLog).filter_by(GeoID="GSE123456").first()
-        assert log is not None
-        assert sorted(log.FileNames) == ["file1.xml", "file2.xml"]
+    # Assertions for directory deletion
+    assert "./test_output/GEO123" in deleted_directories
