@@ -3,11 +3,12 @@ import pandas as pd
 import logging
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.orm import Session
 from config.db_config import get_session_context
 from db.orm_models.proteomics_object import Proteomics
 from db.mapping_table import MappingTable
 from config.logger_config import configure_logger
-from db.schema.cptac_metadata_schema import CptacColumns, CptacMetadata
+from db.schema.cptac_metadata_schema import CptacColumns, CptacMetadata, CptacMetadataLog
 import cptac
 
 # Configure logger
@@ -57,10 +58,10 @@ class CPTACDataIngestor:
 
         # Flatten the DataFrame to long format
         melted_df = df.melt(
-            var_name="protein",  # Column names will be the 'protein' field
-            value_name="quantification",  # Values go into 'quantification'
+            var_name="protein",
+            value_name="quantification",
             ignore_index=False
-        ).reset_index()  # Reset index to maintain sample IDs
+        ).reset_index()
 
         # Rename the original index to 'sample_id' for consistency
         if "index" in melted_df.columns:
@@ -73,11 +74,6 @@ class CPTACDataIngestor:
 
         # Debugging: Verify the DataFrame structure
         logger.debug(f"Flattened DataFrame structure: {melted_df.head()}")
-
-        # Ensure 'sample_id' exists
-        if "sample_id" not in melted_df.columns:
-            logger.error("The column 'sample_id' is missing after melting the DataFrame.")
-            raise KeyError("The column 'sample_id' is required but missing.")
 
         # Initial count of sample-protein pairs
         initial_pairs = len(melted_df)
@@ -99,9 +95,6 @@ class CPTACDataIngestor:
         logger.info(f"Initial sample-protein pairs: {initial_pairs}")
         logger.info(f"Remaining sample-protein pairs: {len(melted_df)}")
         logger.info(f"Dropped sample-protein pairs: {num_pairs_dropped}")
-
-        # Final verification
-        logger.debug(f"Final DataFrame structure after preprocessing: {melted_df.head()}")
 
         return melted_df
 
@@ -139,55 +132,40 @@ class CPTACDataIngestor:
             logger.error(f"Failed to retrieve column mappings for metadata entry {metadata_entry.id}: {e}")
             raise
 
-    def upload_proteomics_data(self, session, df, orm_model, metadata_entry, mapper_table, column_mappings):
+    def preload_sample_ids(self, session, data_type: str, source: str) -> set:
         """
-        Upload flattened proteomics data by iterating over rows of sample-protein pairs.
+        Preload existing SampleIDs from the CptacMetadataLog for a specific data type and source.
         """
         try:
-            for _, row in df.iterrows():
-                sample_id = row["sample_id"]
-                protein_name = row["protein"]
-                quant_value = row["quantification"]
-
-                # Parse protein information
-                ensembl_id = column_mappings.get(protein_name, None)
-                ensembl_gene_id, ensembl_protein_id = None, None
-                if ensembl_id and ensembl_id.startswith("ENSP"):
-                    ensembl_protein_id = ensembl_id
-                elif ensembl_id and ensembl_id.startswith("ENSG"):
-                    ensembl_gene_id = ensembl_id
-
-                # Prepare the data entry
-                data_entry = {
-                    "sample_id": sample_id,
-                    "protein_name": protein_name,
-                    "ensembl_gene_id": ensembl_gene_id,
-                    "ensembl_protein_id": ensembl_protein_id,
-                    "quantification": {metadata_entry.source: {"value": quant_value}},
-                    "data_type": metadata_entry.data_type,
-                    "description": f"Quantification of {metadata_entry.data_type} for dataset {metadata_entry.source}.",
-                }
-
-                # Add mapper_id
-                try:
-                    data_entry["mapper_id"] = self.get_mapper_id(session, mapper_table, protein_name)
-                except Exception as e:
-                    logger.error(f"Failed to map protein {protein_name}: {e}")
-                    continue
-
-                # Insert into the database
-                stmt = insert(orm_model).values(data_entry).on_conflict_do_nothing()
-                session.execute(stmt)
-
-            session.commit()
-            logger.info(f"Successfully uploaded proteomics data for {metadata_entry.source}.")
-
+            existing_samples = session.query(CptacMetadataLog.SampleID).filter_by(
+                DataType=data_type,
+                Source=source,
+                Status="uploaded"
+            ).all()
+            return {sample[0] for sample in existing_samples}
         except Exception as e:
-            session.rollback()
-            logger.error(f"Failed to upload proteomics data: {e}")
+            logger.error(f"Failed to preload SampleIDs: {e}")
+            return set()
 
-    @staticmethod
-    def get_mapper_id(session, mapper_table, feature: str) -> int:
+    def log_cptac_upload(self, session, sample_id, data_type, source, status, message=None):
+        """
+        Log the status of CPTAC data upload for a specific sample.
+        """
+        try:
+            log_entry = CptacMetadataLog(
+                SampleID=sample_id,
+                DataType=data_type,
+                Source=source,
+                Status=status,
+                Message=message
+            )
+            session.add(log_entry)
+            session.commit()
+        except Exception as e:
+            logger.error(f"Failed to log upload for sample {sample_id}: {e}")
+            session.rollback()
+
+    def get_mapper_id(self, session: Session, mapper_table, feature: str) -> int:
         """
         Retrieve or create a mapper ID for a given feature.
         """
@@ -205,6 +183,48 @@ class CPTACDataIngestor:
             session.rollback()
             raise
 
+    def upload_sample_with_logging(self, session, sample_id, sample_data, orm_model, metadata_entry, column_mappings, mapper_table):
+        """
+        Upload a single sample and log the operation in the metadata log.
+        """
+        try:
+            batch = []
+            for _, row in sample_data.iterrows():
+                protein_name = row["protein"]
+                quant_value = row["quantification"]
+
+                ensembl_id = column_mappings.get(protein_name, None)
+                ensembl_gene_id, ensembl_protein_id = None, None
+                if ensembl_id and ensembl_id.startswith("ENSP"):
+                    ensembl_protein_id = ensembl_id
+                elif ensembl_id and ensembl_id.startswith("ENSG"):
+                    ensembl_gene_id = ensembl_id
+
+                data_entry = {
+                    "sample_id": sample_id,
+                    "protein_name": protein_name,
+                    "ensembl_gene_id": ensembl_gene_id,
+                    "ensembl_protein_id": ensembl_protein_id,
+                    "quantification": {metadata_entry.source: {"value": quant_value}},
+                    "data_type": metadata_entry.data_type,
+                    "description": f"Quantification of {metadata_entry.data_type} for dataset {metadata_entry.source}.",
+                }
+
+                data_entry["mapper_id"] = self.get_mapper_id(session, mapper_table, protein_name)
+                batch.append(data_entry)
+
+            # Perform bulk insert
+            stmt = insert(orm_model).values(batch).on_conflict_do_nothing()
+            session.execute(stmt)
+            session.commit()
+
+            # Log successful upload
+            self.log_cptac_upload(session, sample_id, metadata_entry.data_type, metadata_entry.source, "uploaded")
+            logger.info(f"Sample {sample_id} successfully uploaded.")
+        except Exception as e:
+            logger.error(f"Failed to upload data for sample {sample_id}: {e}")
+            self.log_cptac_upload(session, sample_id, metadata_entry.data_type, metadata_entry.source, "failed", str(e))
+
     def ingest_data(self):
         """
         Main ingestion process for a single data type and source.
@@ -216,17 +236,23 @@ class CPTACDataIngestor:
                 metadata_entry = self.get_relevant_metadata_entry(session, "proteomics")
                 column_mappings = self.get_column_mappings(session, metadata_entry)
 
-                # Retrieve DataFrame for proteomics data
-                df = self.cancer_data.get_dataframe(metadata_entry.data_type, metadata_entry.source)
+                # Preload already uploaded SampleIDs
+                uploaded_samples = self.preload_sample_ids(session, metadata_entry.data_type, metadata_entry.source)
+                logger.info(f"Preloaded {len(uploaded_samples)} uploaded samples.")
 
-                # Preprocess the data to remove NaN values and log dropped proteins
+                # Retrieve and preprocess DataFrame for proteomics data
+                df = self.cancer_data.get_dataframe(metadata_entry.data_type, metadata_entry.source)
                 df = self.preprocess_data(df, metadata_entry)
 
-                # Upload the cleaned data
-                self.upload_proteomics_data(session, df, Proteomics, metadata_entry, MappingTable, column_mappings)
+                # Chunk data by sample and process each sample independently
+                for sample_id, sample_data in df.groupby("sample_id"):
+                    if sample_id in uploaded_samples:
+                        logger.info(f"Sample {sample_id} already uploaded. Skipping.")
+                        continue
+
+                    self.upload_sample_with_logging(session, sample_id, sample_data, Proteomics, metadata_entry, column_mappings, MappingTable)
 
             logger.info("Ingestion completed successfully.")
-
         except Exception as e:
             logger.critical(f"Ingestion process failed: {e}")
             traceback.print_exc()

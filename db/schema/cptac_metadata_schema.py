@@ -27,17 +27,10 @@ Future Expansions:
     - Extend column-level metadata to include nested metadata for complex data hierarchies.
 """
 
-from sqlalchemy import (
-    Column,
-    String,
-    Integer,
-    JSON,
-    ForeignKey,
-    Index,
-    UniqueConstraint,
-)
 from sqlalchemy.orm import relationship
+from sqlalchemy import Column, String, Integer, Text, Date, JSON, Index, DateTime, ForeignKey, UniqueConstraint
 from sqlalchemy.ext.declarative import declarative_base
+from datetime import datetime
 
 # Base class for SQLAlchemy ORM models
 Base = declarative_base()
@@ -114,3 +107,30 @@ class CptacColumns(Base):
             f"data_type={self.data_type}, source={self.source}, column_data={self.column_data}, "
             f"description={self.description})>"
         )
+
+class CptacMetadataLog(Base):
+    """
+    Represents logs for CPTAC metadata operations.
+
+    Tracks the upload status and details for CPTAC samples by data type and source.
+    """
+    __tablename__ = 'cptac_metadata_log'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)  # Primary Key
+    SampleID = Column(String, nullable=False)  # Sample ID being uploaded
+    DataType = Column(String, nullable=False)  # Data type (e.g., proteomics)
+    Source = Column(String, nullable=False)  # Data source (e.g., bcm, umich)
+    Status = Column(String, nullable=False)  # Upload status (e.g., uploaded, failed)
+    Message = Column(Text, nullable=True)  # Detailed message or error description
+    Timestamp = Column(DateTime, default=datetime.utcnow, nullable=False)  # Timestamp of the operation
+
+    # Index for efficient querying
+    __table_args__ = (
+        Index('idx_sample_data_source', 'SampleID', 'DataType', 'Source'),
+    )
+
+    def __repr__(self):
+        """
+        Provides a string representation of the object for debugging.
+        """
+        return f"<CptacMetadataLog(SampleID={self.SampleID}, DataType={self.DataType}, Source={self.Source}, Status={self.Status})>"
