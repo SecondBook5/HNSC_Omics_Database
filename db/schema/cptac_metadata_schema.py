@@ -61,8 +61,8 @@ class CptacMetadata(Base):
 
     __table_args__ = (
         UniqueConstraint("data_type", "source", name="uq_data_type_source"),  # Ensure uniqueness
-        Index("idx_data_type", "data_type"),  # Optimize querying by data type
-        Index("idx_source", "source"),  # Optimize querying by source
+        Index("idx_cptac_metadata_data_type", "data_type"),  # Unique index name
+        Index("idx_cptac_metadata_source", "source"),  # Unique index name
     )
 
     def __repr__(self):
@@ -96,9 +96,9 @@ class CptacColumns(Base):
     dataset = relationship("CptacMetadata", back_populates="column_metadata")
 
     __table_args__ = (
-        Index("idx_dataset_id", "dataset_id"),  # Optimize queries by dataset ID
-        Index("idx_data_type", "data_type"),  # Optimize queries by data type
-        Index("idx_source", "source"),  # Optimize queries by source
+        Index("idx_cptac_columns_dataset_id", "dataset_id"),  # Unique index name
+        Index("idx_cptac_columns_data_type", "data_type"),  # Unique index name
+        Index("idx_cptac_columns_source", "source"),  # Unique index name
     )
 
     def __repr__(self):
@@ -107,6 +107,7 @@ class CptacColumns(Base):
             f"data_type={self.data_type}, source={self.source}, column_data={self.column_data}, "
             f"description={self.description})>"
         )
+
 
 class CptacMetadataLog(Base):
     """
@@ -126,7 +127,7 @@ class CptacMetadataLog(Base):
 
     # Index for efficient querying
     __table_args__ = (
-        Index('idx_sample_data_source', 'SampleID', 'DataType', 'Source'),
+        Index('idx_cptac_metadata_log_sample_data_source', 'SampleID', 'DataType', 'Source'),  # Unique index name
     )
 
     def __repr__(self):
