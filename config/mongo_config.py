@@ -1,4 +1,4 @@
-# mongo_config.py
+# File: mongo_config.py
 # This file configures the MongoDB connection for the HNSC Omics Database project,
 # using pymongo with connection pooling, retry logic, and enhanced error handling.
 
@@ -15,15 +15,27 @@ logger = logging.getLogger(__name__)  # Get a logger specific to this module
 
 # Load environment variables from the .env file in the config directory
 env_path = Path(__file__).resolve().parent.parent / 'config' / '.env'  # Define the path to the .env file
-load_dotenv(dotenv_path=env_path)  # Load environment variables from the .env file
+try:
+    load_dotenv(dotenv_path=env_path)  # Load environment variables from the .env file
+    logger.info(".env file loaded successfully.")  # Log successful loading of .env
+except Exception as e:  # Catch any unexpected error during loading
+    logger.error(f"Failed to load .env file: {e}")  # Log the error details
+    raise RuntimeError("Unable to load .env file. Check the file path and format.") from e  # Raise descriptive error
 
 # Construct MongoDB connection URL from environment variables
 try:
+    # Retrieve MongoDB connection details from environment variables
     MONGO_URL = f"mongodb://{os.getenv('DB_USER')}:{os.getenv('DB_PASSWORD')}@{os.getenv('MONGO_HOST')}:{os.getenv('MONGO_PORT')}/{os.getenv('MONGO_DB_NAME')}"
+    if not all([os.getenv('DB_USER'), os.getenv('DB_PASSWORD'), os.getenv('MONGO_HOST'), os.getenv('MONGO_PORT'), os.getenv('MONGO_DB_NAME')]):
+        raise KeyError("One or more required MongoDB environment variables are missing.")  # Ensure all variables are present
+    logger.info("MongoDB connection URL constructed successfully.")  # Log successful URL creation
 except KeyError as e:  # Catch any missing environment variable errors
     logger.error(f"Missing environment variable: {e}")  # Log missing variable error
     raise RuntimeError(
         f"Environment variable {e} is required for MongoDB configuration.") from e  # Raise a clear error for missing variables
+except Exception as e:  # Catch unexpected errors during URL construction
+    logger.error(f"Unexpected error during MongoDB URL construction: {e}")  # Log the error
+    raise RuntimeError("Error occurred while constructing MongoDB connection URL.") from e  # Raise descriptive error
 
 # Initialize MongoDB Client with pooling and retry settings
 try:
@@ -37,11 +49,12 @@ try:
         retryWrites=True,  # Enable retry logic for write operations
         read_preference=ReadPreference.PRIMARY  # Read from the primary node in a replica set
     )
-    logger.info("MongoDB Client created successfully.")  # Log successful client creation
+    # Log successful client creation
+    logger.info("MongoDB Client created successfully with the provided configurations.")
 except ConnectionFailure as conn_err:  # Catch connection-related errors
     logger.error(f"Failed to connect to MongoDB: {conn_err}")  # Log the connection failure
     raise RuntimeError(
-        "Unable to connect to MongoDB - check server status and network connection.") from conn_err  # Raise an error for debugging
+        "Unable to connect to MongoDB - check server status and network connection.") from conn_err  # Raise a descriptive error
 except ConfigurationError as conf_err:  # Catch configuration-related errors
     logger.error(f"MongoDB configuration error: {conf_err}")  # Log configuration error
     raise RuntimeError(
@@ -50,6 +63,9 @@ except PyMongoError as pymongo_err:  # Catch general PyMongo errors
     logger.error(f"PyMongo encountered an error: {pymongo_err}")  # Log PyMongo-specific error
     raise RuntimeError(
         "Unexpected PyMongo error during MongoDB client creation.") from pymongo_err  # Raise an error to indicate unexpected issue
+except Exception as e:  # Catch any other unexpected errors
+    logger.error(f"Unexpected error during MongoDB client initialization: {e}")  # Log the error
+    raise RuntimeError("Unexpected error occurred while initializing MongoDB client.") from e  # Raise a descriptive error
 
 
 def get_mongo_client() -> MongoClient:
@@ -83,3 +99,6 @@ def get_mongo_client() -> MongoClient:
     except PyMongoError as pymongo_err:  # Catch general PyMongo errors
         logger.error(f"PyMongoError during MongoDB client ping: {pymongo_err}")  # Log generic PyMongo error
         raise RuntimeError("Unexpected error during MongoDB client ping.") from pymongo_err  # Raise descriptive error
+    except Exception as e:  # Catch any unexpected errors during ping
+        logger.error(f"Unexpected error during MongoDB client ping: {e}")  # Log the error
+        raise RuntimeError("Unexpected error occurred during MongoDB client ping.") from e  # Raise descriptive error

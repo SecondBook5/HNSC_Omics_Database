@@ -1,19 +1,7 @@
-from sqlalchemy import (
-    Column,
-    Integer,
-    String,
-    Float,
-    JSON,
-    ForeignKey,
-    UniqueConstraint,
-    Index
-)
-from sqlalchemy.ext.declarative import declarative_base
-
-# Import MappingTable for the ForeignKey reference
+from sqlalchemy import Column, Integer, String, Float, JSON, ForeignKey, UniqueConstraint, Index
+from sqlalchemy.dialects.postgresql import JSONB
 from db.mapping_table import MappingTable
-
-Base = declarative_base()
+from config.db_config import Base
 
 
 class Proteomics(Base):
@@ -33,7 +21,7 @@ class Proteomics(Base):
     ensembl_protein_id = Column(String, nullable=True, index=True, doc="Ensembl Protein ID, if available.")
 
     # Quantification Data
-    quantification = Column(JSON, nullable=False, doc="JSON dictionary of quantification values by data source.")
+    quantification = Column(JSONB, nullable=False, doc="JSONB dictionary of quantification values by data source.")
     aggregate_quantification = Column(Float, nullable=True, doc="Aggregate quantification value as determined by the user.")
 
     # Metadata Fields

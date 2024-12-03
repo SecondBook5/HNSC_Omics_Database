@@ -232,23 +232,21 @@ class DataTypeDeterminer:
                 self.logger.warning(f"Super-series {self.geo_id} has no related datasets.")
                 return set()
 
-            # Attempt to parse the RelatedDatasets field as JSON
+            # If RelatedDatasets is already a list (from jsonb field), use it directly
             related_datasets = series.RelatedDatasets
-            if isinstance(related_datasets, str):  # Ensure it is a string before parsing
+            if isinstance(related_datasets, str):  # If it's a JSON string, decode it
                 try:
                     related_datasets = json.loads(related_datasets)
                 except json.JSONDecodeError as e:
                     # Log an error if the JSON parsing fails
                     self.logger.error(f"Failed to parse RelatedDatasets for {self.geo_id}: {e}")
                     return set()
-
-            # Validate that related_datasets is a list
-            if not isinstance(related_datasets, list):
-                # Log an error if the data is not in the expected format
-                self.logger.error(f"Unexpected format for RelatedDatasets in {self.geo_id}. Expected list.")
+            elif not isinstance(related_datasets, list):  # Log error if format is unexpected
+                self.logger.error(
+                    f"Unexpected format for RelatedDatasets in {self.geo_id}. Expected list or JSON string.")
                 return set()
 
-            # Initialize a set to aggregate data types
+            # Aggregate data types from related sub-series
             data_types = set()
             for related_dataset in related_datasets:
                 # Validate the structure of each related dataset entry
@@ -266,25 +264,15 @@ class DataTypeDeterminer:
 
                     # Fetch metadata for the sub-series
                     sub_series = session.query(GeoSeriesMetadata).filter_by(SeriesID=target).one_or_none()
-                    if sub_series:
-                        # Check if the sub-series has data types
-                        if sub_series.DataTypes:
-                            try:
-                                # Parse the DataTypes field as JSON
-                                sub_series_data_types = json.loads(sub_series.DataTypes)
-                                # Add the parsed data types to the aggregate set
-                                data_types.update(sub_series_data_types)
-                            except json.JSONDecodeError as e:
-                                # Log an error if parsing the DataTypes fails
-                                self.logger.error(f"Failed to parse DataTypes for sub-series {target}: {e}")
-                        else:
-                            # Log a warning if no data types are found for the sub-series
-                            self.logger.warning(f"No data types found for sub-series {target}.")
+                    if sub_series and sub_series.DataTypes:
+                        try:
+                            sub_series_data_types = sub_series.DataTypes if isinstance(sub_series.DataTypes,list) else json.loads(sub_series.DataTypes)
+                            data_types.update(sub_series_data_types)
+                        except json.JSONDecodeError as e:
+                            self.logger.error(f"Failed to parse DataTypes for sub-series {target}: {e}")
                     else:
-                        # Log a warning if the sub-series metadata is not found
-                        self.logger.warning(f"Sub-series {target} not found in GeoSeriesMetadata.")
+                        self.logger.warning(f"No data types found for sub-series {target}.")
                 else:
-                    # Log informational messages for unrelated dataset entries
                     self.logger.info(f"Ignoring unrelated dataset entry: {related_dataset}")
 
             # Log a warning if no data types were aggregated
@@ -353,8 +341,8 @@ class DataTypeDeterminer:
             series = session.query(GeoSeriesMetadata).filter_by(SeriesID=self.geo_id).one_or_none()
 
             if series:
-                # Update the DataTypes field with the inferred data types (converted to JSON)
-                series.DataTypes = json.dumps(inferred_data_types)
+                # Update the DataTypes field with the inferred data types directly (SQLAlchemy will handle JSONB conversion)
+                series.DataTypes = inferred_data_types
                 session.add(series)  # Add the updated object to the session
                 session.commit()  # Commit the changes to the database
                 self.logger.info(f"Successfully updated Series {self.geo_id} with data types: {inferred_data_types}")

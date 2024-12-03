@@ -10,6 +10,8 @@ from sqlalchemy import String
 from db.schema.geo_metadata_schema import GeoSeriesMetadata, GeoSampleMetadata
 from urllib.parse import urlparse
 
+from sqlalchemy import func
+
 class GeoDataDownloader:
     """
     Handles downloading of GEO data based on metadata stored in the database.
@@ -40,13 +42,10 @@ class GeoDataDownloader:
             list: Series IDs matching the data type.
         """
         try:
-            # Use JSONB functions to search for data type in JSONB array or handle it as a string
+            # Use JSONB operator to check if data_type exists in the DataTypes array
             series = (
                 session.query(GeoSeriesMetadata)
-                .filter(
-                    (GeoSeriesMetadata.DataTypes.op("@>")([data_type]))  # JSONB array element check
-                    | (GeoSeriesMetadata.DataTypes.cast(String).like(f"%{data_type}%"))  # Handle as string
-                )
+                .filter(GeoSeriesMetadata.DataTypes.op("@>")(f'[\"{data_type}\"]'))  # JSONB contains operator
                 .all()
             )
             self.logger.info(f"Found {len(series)} series for data type: {data_type}")
@@ -72,11 +71,14 @@ class GeoDataDownloader:
                 .filter(GeoSampleMetadata.SeriesID == series_id)
                 .all()
             )
-            urls = [
-                sample.SupplementaryData
-                for sample in samples
-                if sample.SupplementaryData is not None
-            ]
+            # Extract SupplementaryData URLs and flatten any lists
+            urls = []
+            for sample in samples:
+                if sample.SupplementaryData:
+                    if isinstance(sample.SupplementaryData, list):
+                        urls.extend(sample.SupplementaryData)
+                    else:
+                        urls.append(sample.SupplementaryData)
             self.logger.info(
                 f"Found {len(urls)} supplementary files for series: {series_id}"
             )
@@ -193,6 +195,7 @@ class GeoDataDownloader:
                     self.logger.warning(f"No supplementary data URLs found for series: {series_id}")
 
             self.logger.info("GEO data download completed.")
+
 
 # Example Usage
 if __name__ == "__main__":

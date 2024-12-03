@@ -1,7 +1,5 @@
 import argparse
-from config.db_config import get_postgres_engine
-from db.schema.geo_metadata_schema import Base as GeoBase
-from db.schema.cptac_metadata_schema import Base as CptacBase
+from config.db_config import get_postgres_engine, Base
 from sqlalchemy import MetaData
 from sqlalchemy.exc import ProgrammingError
 
@@ -30,8 +28,7 @@ def reset_database():
 
     # Recreate all tables
     print("Creating new tables...")
-    GeoBase.metadata.create_all(engine)
-    CptacBase.metadata.create_all(engine)
+    Base.metadata.create_all(engine)
 
     print("Database schema updated successfully.")
 

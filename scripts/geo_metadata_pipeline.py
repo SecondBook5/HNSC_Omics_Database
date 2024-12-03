@@ -223,11 +223,21 @@ class GeoMetadataPipeline:
 
             # Validate each downloaded file path
             for file_path in file_paths:
+                # Skip .txt files
+                if file_path.endswith(".txt"):
+                    self.logger.warning(f"Skipping unsupported file type: {file_path}")
+                    continue
+
                 self.validate_download(geo_id, file_path)
 
             # Step 2: Extract and upload metadata for each file
             total_processed_samples = 0
             for file_path in file_paths:
+                # Skip .txt files
+                if file_path.endswith(".txt"):
+                    self.logger.warning(f"Skipping unsupported file type: {file_path}")
+                    continue
+
                 try:
                     # Initialize the ETL processor for the file
                     extractor = GeoMetadataETL(
