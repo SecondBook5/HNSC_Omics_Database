@@ -22,9 +22,10 @@ Future Expansions:
 """
 
 # Import necessary SQLAlchemy modules for schema definition
-from sqlalchemy import Column, String, Text, Date, JSON, ForeignKey, Integer, Index
+from sqlalchemy import Column, String, Text, Date, ForeignKey, Integer, Index
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
+from sqlalchemy.dialects.postgresql import JSONB  # Use JSONB instead of JSON
 
 # Base class for all ORM models
 Base = declarative_base()
@@ -52,12 +53,12 @@ class GeoSeriesMetadata(Base):
     OverallDesign = Column(Text, nullable=True)  # Description of experimental design
 
     # Additional fields
-    RelatedDatasets = Column(JSON, nullable=True)  # Stores relationships to other datasets
+    RelatedDatasets = Column(JSONB, nullable=True)  # Stores relationships to other datasets
     SupplementaryData = Column(Text, nullable=True)  # Supplementary files or information
 
     # New fields
     SampleCount = Column(Integer, nullable=True, default=0)  # Number of samples in the series
-    DataTypes = Column(JSON, nullable=True)  # List or JSON of data types (e.g., ["RNA-Seq", "ATAC-Seq"])
+    DataTypes = Column(JSONB, nullable=True)  # List or JSONB of data types (e.g., ["RNA-Seq", "ATAC-Seq"])
 
     # Relationship to sample metadata
     Samples = relationship("GeoSampleMetadata", back_populates="Series")
@@ -99,7 +100,7 @@ class GeoSampleMetadata(Base):
     Organism = Column(String, nullable=True)  # Organism name (e.g., "Homo sapiens")
     Source = Column(Text, nullable=True)  # Source of the sample (e.g., "tissue", "cell line")
     Molecule = Column(Text, nullable=True)  # Molecule studied (e.g., "RNA", "DNA")
-    Characteristics = Column(JSON, nullable=True)  # JSON field for characteristics (e.g., {"age": 25, "sex": "male"})
+    Characteristics = Column(JSONB, nullable=True)  # JSONB field for characteristics (e.g., {"age": 25, "sex": "male"})
     ExtractProtocol = Column(Text, nullable=True)  # Extraction protocol used
 
     # Data processing and instrumentation details
@@ -112,7 +113,7 @@ class GeoSampleMetadata(Base):
 
     # Supplementary and additional details
     SupplementaryData = Column(Text, nullable=True)
-    RelatedDatasets = Column(JSON, nullable=True)
+    RelatedDatasets = Column(JSONB, nullable=True)
     HybridizationProtocol = Column(Text, nullable=True)
     ScanProtocol = Column(Text, nullable=True)
     Label = Column(Text, nullable=True)
@@ -151,7 +152,7 @@ class GeoMetadataLog(Base):
     GeoID = Column(String, nullable=False, unique=True)  # GEO Series or Sample ID
     Status = Column(String, nullable=False)  # Status of the operation (e.g., 'downloaded', 'processed')
     Message = Column(Text, nullable=True)  # Detailed message or error description
-    FileNames = Column(JSON, nullable=True)  # List of files associated with the operation
+    FileNames = Column(JSONB, nullable=True)  # List of files associated with the operation
     Timestamp = Column(Date, nullable=False)  # Timestamp of the log entry
 
     # Index for efficient querying by GeoID
