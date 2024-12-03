@@ -1,7 +1,7 @@
 from sqlalchemy import Column, String, Integer, JSON, UniqueConstraint
-from sqlalchemy.ext.declarative import declarative_base
+from config.db_config import Base
 
-Base = declarative_base()
+
 
 class MappingTable(Base):
     """

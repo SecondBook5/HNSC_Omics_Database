@@ -8,7 +8,7 @@ import sys
 import os
 from typing import List
 from sqlalchemy.exc import SQLAlchemyError
-from config.db_config import get_postgres_engine  # Import engine creation function
+from config.db_config import get_postgres_engine, Base  # Import engine creation function
 from db.schema.geo_metadata_schema import GeoSeriesMetadata, GeoSampleMetadata, GeoMetadataLog
 from db.schema.cptac_metadata_schema import CptacMetadata, CptacColumns
 from db.orm_models.proteomics_object import Proteomics

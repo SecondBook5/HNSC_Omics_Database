@@ -29,12 +29,8 @@ Future Expansions:
 
 from sqlalchemy.orm import relationship
 from sqlalchemy import Column, String, Integer, Text, Date, JSON, Index, DateTime, ForeignKey, UniqueConstraint
-from sqlalchemy.ext.declarative import declarative_base
+from config.db_config import Base
 from datetime import datetime
-
-# Base class for SQLAlchemy ORM models
-Base = declarative_base()
-
 
 class CptacMetadata(Base):
     """
