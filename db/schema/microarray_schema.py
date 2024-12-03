@@ -8,6 +8,7 @@ from sqlalchemy import Column, String, Text, Integer, Float, ForeignKey, Index, 
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
+from sqlalchemy.schema import ForeignKeyConstraint
 
 # Base class for all ORM models
 Base = declarative_base()
@@ -61,18 +62,10 @@ class MicroarrayData(Base):
     __tablename__ = 'microarray_data'
 
     id = Column(Integer, primary_key=True, autoincrement=True)  # Unique ID for the table
-    SampleID = Column(String, ForeignKey('geo_sample_metadata.SampleID'), nullable=False)  # Sample identifier
+    SampleID = Column(String, ForeignKey('geo_sample_metadata.SampleID', ondelete='CASCADE'), nullable=False)  # Sample identifier
     ProbeID = Column(String, nullable=False)  # Probe ID from PlatformAnnotation
     SeriesID = Column(String, nullable=False)  # Series ID from DatasetSeriesMetadata
     ExpressionValue = Column(Float, nullable=False)  # Expression value for the probe
-
-    # Define foreign key with composite key reference
-    __table_args__ = (
-        ForeignKey('platform_annotation.ProbeID', ondelete='CASCADE'),
-        ForeignKey('platform_annotation.SeriesID', ondelete='CASCADE'),
-        Index('ix_microarray_data_sample_probe', 'SampleID', 'ProbeID'),
-        Index('ix_microarray_data_series_probe', 'SeriesID', 'ProbeID'),
-    )
 
     # Define relationships
     platform_annotation = relationship(
@@ -80,6 +73,18 @@ class MicroarrayData(Base):
         back_populates="microarray_data",
     )
 
+    # Composite Foreign Key Constraint
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ['ProbeID', 'SeriesID'],
+            ['platform_annotation.ProbeID', 'platform_annotation.SeriesID'],
+            ondelete='CASCADE'
+        ),
+        Index('ix_microarray_data_sample_probe', 'SampleID', 'ProbeID'),
+        Index('ix_microarray_data_series_probe', 'SeriesID', 'ProbeID'),
+    )
+
     def __repr__(self):
         return (f"<MicroarrayData(SampleID={self.SampleID}, ProbeID={self.ProbeID}, "
                 f"ExpressionValue={self.ExpressionValue})>")
+
