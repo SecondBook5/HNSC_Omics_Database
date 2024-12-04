@@ -173,3 +173,29 @@ def test_clean_files(mock_zipfile, mock_rmdir, mock_remove, mock_isfile, mock_ex
 
     # Assertions for directory deletion
     assert "./test_output/GEO123" in deleted_directories
+
+
+@patch("os.path.exists", return_value=True)
+@patch("os.path.isfile", return_value=True)
+def test_empty_geo_ids_file(mock_isfile, mock_exists, geo_file_handler):
+    """
+    Test behavior when `geo_ids_file` is empty.
+    """
+    # Mock file content to be empty
+    with patch("builtins.open", mock_open(read_data="")):
+        # Expect ValueError to be raised for empty GEO IDs file
+        with pytest.raises(ValueError, match="GEO IDs file must be provided for batch initialization."):
+            geo_file_handler.initialize_log_table()
+
+
+@patch("os.path.exists", return_value=False)
+def test_nonexistent_geo_ids_file(mock_exists, geo_file_handler):
+    """
+    Test behavior when `geo_ids_file` does not exist.
+    """
+    # Set a nonexistent file path
+    geo_file_handler.geo_ids_file = "./nonexistent_geo_ids.txt"
+
+    # Expect FileNotFoundError to be raised for nonexistent file
+    with pytest.raises(FileNotFoundError, match=f"GEO IDs file not found: {geo_file_handler.geo_ids_file}"):
+        geo_file_handler.initialize_log_table()
