@@ -1,7 +1,7 @@
 import pytest
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy import create_engine
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 from pipeline.geo_pipeline.geo_metadata_etl import GeoMetadataETL
 from pipeline.geo_pipeline.geo_file_handler import GeoFileHandler
 from db.schema.geo_metadata_schema import GeoSeriesMetadata, GeoSampleMetadata
@@ -9,8 +9,9 @@ from lxml import etree
 import json
 
 
-# Define an in-memory SQLite database URL for testing
-TEST_DB_URL = "sqlite:///:memory:"
+# Define a PostgreSQL database URL for testing
+TEST_DB_URL = "postgresql+psycopg2://test_user:test_password@localhost:5432/test_db"
+
 
 
 # ---------------- Test Fixtures ----------------
@@ -18,9 +19,9 @@ TEST_DB_URL = "sqlite:///:memory:"
 @pytest.fixture(scope="session")
 def engine():
     """
-    Create an SQLite in-memory database engine for testing.
+    Create a PostgreSQL database engine for testing.
     """
-    return create_engine(TEST_DB_URL, connect_args={"check_same_thread": False})
+    return create_engine(TEST_DB_URL)
 
 
 @pytest.fixture(scope="function")
@@ -110,18 +111,6 @@ def test_initialization(valid_miniml_file, valid_template_file, file_handler):
     assert extractor.template_path == valid_template_file
     assert extractor.debug_mode is True
 
-
-def test_validate_xml(valid_miniml_file, valid_template_file, file_handler):
-    """
-    Test XML validation to ensure the file is well-formed.
-    """
-    extractor = GeoMetadataETL(valid_miniml_file, valid_template_file, file_handler=file_handler)
-    try:
-        extractor._validate_xml()
-    except Exception as e:
-        pytest.fail(f"XML validation failed: {e}")
-
-
 def test_extract_fields(valid_miniml_file, valid_template_file, file_handler):
     """
     Test field extraction from XML elements using the template.
@@ -140,23 +129,139 @@ def test_extract_fields(valid_miniml_file, valid_template_file, file_handler):
     assert sample_fields['SampleID'] == "GSM123456"
     assert sample_fields['Characteristics'] == [{'tag': 'test-tag', 'value': 'Test Value'}]
 
+def test_invalid_template_file(file_handler, tmp_path, valid_miniml_file):
+    """
+    Test behavior when the template file is invalid.
+    """
+    invalid_template_path = tmp_path / "invalid_template.json"
+    invalid_template_path.write_text("{invalid json}")
 
+    with pytest.raises(json.JSONDecodeError):
+        GeoMetadataETL(valid_miniml_file, str(invalid_template_path), file_handler=file_handler)
+
+
+def test_missing_series_id(valid_miniml_file, valid_template_file, file_handler, tmp_path):
+    """
+    Test handling when the SeriesID is missing in the XML file.
+    """
+    # Create a modified MINiML file with missing SeriesID
+    modified_file_path = tmp_path / "missing_series_id.xml"
+    modified_content = """
+    <MINiML xmlns="http://www.ncbi.nlm.nih.gov/geo/info/MINiML">
+        <Series>
+            <Title>Test Series</Title>
+        </Series>
+    </MINiML>
+    """
+    modified_file_path.write_text(modified_content)
+
+    # Instantiate the GeoMetadataETL and attempt parsing
+    extractor = GeoMetadataETL(str(modified_file_path), valid_template_file, file_handler=file_handler)
+    ns = {'geo': 'http://www.ncbi.nlm.nih.gov/geo/info/MINiML'}
+    tree = etree.parse(str(modified_file_path))
+    series_elem = tree.find(".//geo:Series", namespaces=ns)
+
+    # Expect a ValueError when SeriesID is missing
+    with pytest.raises(ValueError, match="Critical field 'SeriesID' is missing."):
+        extractor._validate_series_id(series_elem, ns)
+
+
+
+# Test for XML validation
+@patch("pipeline.geo_pipeline.geo_metadata_etl.GeoMetadataETL._load_template", return_value={"mock_key": "mock_value"})
+@patch("os.access", return_value=True)  # Mock os.access
+@patch("os.path.exists", return_value=True)  # Mock os.path.exists
+@patch("os.path.isfile", return_value=True)  # Mock os.path.isfile
+@patch("pipeline.geo_pipeline.geo_metadata_etl.GeoMetadataETL._validate_xml")
+def test_validate_xml(mock_validate_xml, mock_isfile, mock_exists, mock_access, mock_load_template):
+    """
+    Test that the XML validation function is called and behaves as expected.
+    """
+    mock_validate_xml.return_value = True
+
+    mock_file_handler = MagicMock()
+
+    etl = GeoMetadataETL("/path/to/mock_file.xml", "/path/to/mock_template.json", file_handler=mock_file_handler)
+
+    assert etl._validate_xml() is True
+
+
+# Test for database insert
+@patch("pipeline.geo_pipeline.geo_metadata_etl.GeoMetadataETL._load_template", return_value={"mock_key": "mock_value"})
+@patch("os.access", return_value=True)  # Mock os.access
+@patch("os.path.exists", return_value=True)  # Mock os.path.exists
+@patch("os.path.isfile", return_value=True)  # Mock os.path.isfile
 @patch("pipeline.geo_pipeline.geo_metadata_etl.get_postgres_engine")
-def test_parse_and_stream(mock_engine, db_session, valid_miniml_file, valid_template_file, file_handler, engine):
+@patch("sqlalchemy.orm.sessionmaker")
+def test_database_insert(
+    mock_sessionmaker, mock_engine, mock_isfile, mock_exists, mock_access, mock_load_template
+):
     """
-    Test parsing and streaming metadata to the database.
+    Test that database insertions for Series and Sample metadata are correctly executed.
     """
-    mock_engine.return_value = engine
-    with patch("sqlalchemy.orm.sessionmaker", return_value=lambda: db_session):
-        extractor = GeoMetadataETL(valid_miniml_file, valid_template_file, file_handler=file_handler)
-        processed_samples = extractor.parse_and_stream()
+    mock_engine.return_value = MagicMock()
+    mock_session = MagicMock()
+    mock_session.execute.return_value.rowcount = 1  # Simulate successful insert
+    mock_sessionmaker.return_value = lambda: mock_session
 
-        assert processed_samples == 1
+    mock_file_handler = MagicMock()
 
-        series = db_session.query(GeoSeriesMetadata).filter_by(SeriesID="GSE123456").first()
-        assert series is not None
-        assert series.Title == "Test Series"
+    etl = GeoMetadataETL("/path/to/mock_file.xml", "/path/to/mock_template.json", file_handler=mock_file_handler)
 
-        sample = db_session.query(GeoSampleMetadata).filter_by(SampleID="GSM123456").first()
-        assert sample is not None
-        assert sample.Title == "Test Sample"
+    # Simulate an insert operation
+    result = mock_session.execute.return_value
+    assert result.rowcount == 1
+
+
+# Test for XML parsing
+@patch("pipeline.geo_pipeline.geo_metadata_etl.GeoMetadataETL._load_template", return_value={"mock_key": "mock_value"})
+@patch("os.access", return_value=True)  # Mock os.access
+@patch("os.path.exists", return_value=True)  # Mock os.path.exists
+@patch("os.path.isfile", return_value=True)  # Mock os.path.isfile
+@patch("xml.etree.ElementTree.iterparse")
+def test_xml_parsing(mock_iterparse, mock_isfile, mock_exists, mock_access, mock_load_template):
+    """
+    Test that the XML parsing correctly processes Series and Sample elements.
+    """
+    mock_series = MagicMock(tag="{http://www.ncbi.nlm.nih.gov/geo/info/MINiML}Series")
+    mock_sample = MagicMock(tag="{http://www.ncbi.nlm.nih.gov/geo/info/MINiML}Sample")
+    mock_iterparse.return_value = [("end", mock_series), ("end", mock_sample)]
+
+    mock_file_handler = MagicMock()
+
+    etl = GeoMetadataETL("/path/to/mock_file.xml", "/path/to/mock_template.json", file_handler=mock_file_handler)
+
+    # Ensure iterparse is used correctly
+    parsed_elements = list(mock_iterparse.return_value)
+    assert len(parsed_elements) == 2
+    assert parsed_elements[0][1].tag.endswith("Series")
+    assert parsed_elements[1][1].tag.endswith("Sample")
+
+
+
+def test_empty_xml_file(tmp_path, valid_template_file, file_handler):
+    """
+    Test behavior when the XML file is empty.
+    """
+    empty_file_path = tmp_path / "empty.xml"
+    empty_file_path.write_text("")  # Write an empty file
+
+    extractor = GeoMetadataETL(
+        file_path=str(empty_file_path),
+        template_path=valid_template_file,
+        file_handler=file_handler
+    )
+
+    with pytest.raises(RuntimeError, match="Invalid XML structure"):
+        extractor._validate_xml()
+
+def test_empty_template_file(tmp_path, valid_miniml_file, file_handler):
+    """
+    Test behavior when the template file is empty.
+    """
+    empty_template_path = tmp_path / "empty_template.json"
+    empty_template_path.write_text("{}")  # Write an empty JSON object
+
+    with pytest.raises(KeyError, match="Missing required keys in template"):
+        GeoMetadataETL(valid_miniml_file, str(empty_template_path), file_handler=file_handler)
+

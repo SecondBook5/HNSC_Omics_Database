@@ -132,7 +132,7 @@ def test_update_series_metadata(mock_session, determiner):
     determiner._update_series_metadata(mock_session, ["RNA-Seq", "ChIP-Seq"])
 
     # Validate that the DataTypes field was updated
-    assert mock_series.DataTypes == '["RNA-Seq", "ChIP-Seq"]'
+    assert mock_series.DataTypes == ["RNA-Seq", "ChIP-Seq"]
 
 
 def test_update_series_metadata_not_found(mock_session, determiner):
@@ -149,3 +149,32 @@ def test_update_series_metadata_not_found(mock_session, determiner):
     with patch.object(determiner.logger, 'warning') as mock_warning:
         determiner._update_series_metadata(mock_session, ["RNA-Seq"])
         mock_warning.assert_called_with("Series GSE123456 not found in GeoSeriesMetadata.")
+
+def test_handle_super_series_empty_related_datasets(mock_session, determiner):
+    """
+    Test handling of super-series with no related datasets.
+    """
+    mock_series = GeoSeriesMetadata(RelatedDatasets=None)
+    mock_session.query.return_value.filter_by.return_value.one_or_none.return_value = mock_series
+
+    data_types = determiner._handle_super_series(mock_session)
+    assert data_types == set()  # Expect an empty set
+
+
+def test_handle_super_series_malformed_related_datasets(mock_session, determiner):
+    """
+    Test handling of super-series with malformed related datasets.
+    """
+    mock_series = GeoSeriesMetadata(RelatedDatasets='Invalid JSON String')
+    mock_session.query.return_value.filter_by.return_value.one_or_none.return_value = mock_series
+
+    data_types = determiner._handle_super_series(mock_session)
+    assert data_types == set()  # Expect an empty set due to parsing error
+
+
+def test_classify_sample_empty_metadata(determiner):
+    """
+    Test classification of a sample with empty metadata.
+    """
+    data_type = determiner._classify_sample(None, None, None, None)
+    assert data_type == "Microarray"  # Default classification

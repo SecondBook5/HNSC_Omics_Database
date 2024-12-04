@@ -44,9 +44,9 @@ except Exception as e:  # Catch any other unexpected errors during URL construct
 try:
     engine: Engine = create_engine(
         POSTGRES_URL,  # Use the constructed PostgreSQL URL for the connection
-        pool_size=20,  # Set max number of connections in the pool
-        max_overflow=10,  # Allow additional connections if the pool is full
-        pool_timeout=30,  # Wait timeout in seconds for a connection from the pool
+        pool_size = int(os.getenv("PG_POOL_SIZE", 20)),  # Set max number of connections in the pool
+        max_overflow = int(os.getenv("PG_MAX_OVERFLOW", 10)),  # Allow additional connections if the pool is full
+        pool_timeout=int(os.getenv("PG_POOL_TIMEOUT", 30)),  # Wait timeout in seconds for a connection from the pool
         pool_recycle=1800,  # Recycle connections every 30 minutes to prevent stale connections
         echo=os.getenv("DEBUG", "False").lower() == "true"  # Enable SQL query logging if DEBUG mode is enabled
     )
