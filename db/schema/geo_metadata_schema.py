@@ -22,13 +22,10 @@ Future Expansions:
 """
 
 # Import necessary SQLAlchemy modules for schema definition
-from sqlalchemy import Column, String, Text, Date, ForeignKey, Integer, Index
 from config.db_config import Base
+from sqlalchemy import Column, String, Text, Date, ForeignKey, Integer, Index
 from sqlalchemy.orm import relationship
 from sqlalchemy.dialects.postgresql import JSONB  # Use JSONB instead of JSON
-
-
-
 
 class GeoSeriesMetadata(Base):
     """

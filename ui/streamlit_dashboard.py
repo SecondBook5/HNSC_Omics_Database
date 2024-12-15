@@ -46,6 +46,12 @@ app_mode = st.sidebar.selectbox(
     ]
 )
 
+# Initialize session state for GEO IDs
+if "geo_ids" not in st.session_state:
+    st.session_state.geo_ids = []
+if "include_samples" not in st.session_state:
+    st.session_state.include_samples = False
+
 # Run GEO Metadata Pipeline
 if app_mode == "Run GEO Metadata Pipeline":
     st.header("Run GEO Metadata Pipeline")
@@ -55,21 +61,24 @@ if app_mode == "Run GEO Metadata Pipeline":
         placeholder="GSE12345, GSE67890"
     )
 
+    # Pre-run option to include sample table
+    st.session_state.include_samples = st.checkbox("Include GEO Sample Metadata Table")
+
     if st.button("Run Pipeline"):
-        geo_ids = [geo_id.strip() for geo_id in geo_ids_input.split(",") if geo_id.strip()]
-        if not geo_ids:
+        st.session_state.geo_ids = [geo_id.strip() for geo_id in geo_ids_input.split(",") if geo_id.strip()]
+        if not st.session_state.geo_ids:
             st.error("Please enter valid GEO IDs.")
         else:
             try:
                 # Run pipeline
-                st.write(f"Processing GEO IDs: {', '.join(geo_ids)}")
-                pipeline = GeoMetadataPipeline(geo_ids=geo_ids)
+                st.write(f"Processing GEO IDs: {', '.join(st.session_state.geo_ids)}")
+                pipeline = GeoMetadataPipeline(geo_ids=st.session_state.geo_ids)
                 pipeline.execute_pipeline()
                 st.success("Pipeline completed successfully!")
 
                 # Run classifier
                 st.write("Running classifier...")
-                for geo_id in geo_ids:
+                for geo_id in st.session_state.geo_ids:
                     determiner = DataTypeDeterminer(geo_id)
                     determiner.process()
                 st.success("Classifier completed successfully!")
@@ -78,7 +87,7 @@ if app_mode == "Run GEO Metadata Pipeline":
                 with engine.connect() as conn:
                     query = f"""
                         SELECT "SeriesID", "DataTypes" FROM geo_series_metadata
-                        WHERE "SeriesID" IN ({','.join([f"'{geo_id}'" for geo_id in geo_ids])});
+                        WHERE "SeriesID" IN ({','.join([f"'{geo_id}'" for geo_id in st.session_state.geo_ids])});
                     """
                     result = conn.execute(text(query))
                     data = [{"SeriesID": row["SeriesID"], "DataTypes": row["DataTypes"]} for row in result.mappings()]
@@ -95,7 +104,7 @@ if app_mode == "Run GEO Metadata Pipeline":
                 with engine.connect() as conn:
                     series_query = f"""
                         SELECT * FROM geo_series_metadata
-                        WHERE "SeriesID" IN ({','.join([f"'{geo_id}'" for geo_id in geo_ids])});
+                        WHERE "SeriesID" IN ({','.join([f"'{geo_id}'" for geo_id in st.session_state.geo_ids])});
                     """
                     result = conn.execute(text(series_query))
                     series_data = [dict(row) for row in result.mappings()]
@@ -106,13 +115,13 @@ if app_mode == "Run GEO Metadata Pipeline":
                     else:
                         st.warning("No GEO Series Metadata found for the entered GEO IDs.")
 
-                # Option to display GEO Sample Metadata
-                if st.checkbox("Show GEO Sample Metadata"):
+                # Include GEO Sample Metadata if selected
+                if st.session_state.include_samples:
                     st.write("GEO Sample Metadata Table:")
                     with engine.connect() as conn:
                         sample_query = f"""
                             SELECT * FROM geo_sample_metadata
-                            WHERE "SeriesID" IN ({','.join([f"'{geo_id}'" for geo_id in geo_ids])});
+                            WHERE "SeriesID" IN ({','.join([f"'{geo_id}'" for geo_id in st.session_state.geo_ids])});
                         """
                         result = conn.execute(text(sample_query))
                         sample_data = [dict(row) for row in result.mappings()]

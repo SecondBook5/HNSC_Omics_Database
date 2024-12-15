@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
   <component name="SqlDialectMappings">
-    <file url="file://$PROJECT_DIR$/pipeline/cptac_pipeline/cptac_metadata_extractor.py" dialect="GenericSQL" />
     <file url="file://$PROJECT_DIR$/pipeline/geo_pipeline/geo_metadata_downloader.py" dialect="PostgreSQL" />
     <file url="file://$PROJECT_DIR$/tests/geo_pipeline_tests/test_geo_metadata_downloader.py" dialect="GenericSQL" />
     <file url="PROJECT" dialect="PostgreSQL" />

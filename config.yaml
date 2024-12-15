@@ -1,41 +1,30 @@
-# File: config.yaml
-
-# General configuration
+# General Project Configuration
 project:
   name: "HNSC Omics Database"
-  description: "A pipeline for downloading and processing multi-omics data for HNSC."
+  description: "A multi-omics database and pipeline for analyzing Head and Neck Cancer datasets."
 
-# GEO pipeline configuration
+# Spatial Transcriptomics Configuration
+spatial_transcriptomics:
+  raw_data_dir: "/mnt/d/HNSC_Omics_Data/raw/GEO/GSE208253"  # Raw spatial transcriptomics data
+  processed_data_dir: "/mnt/d/HNSC_Omics_Data/processed/Spatial_Transcriptomics"  # Processed data directory
+  results_dir: "/mnt/d/HNSC_Omics_Data/results/Spatial_Transcriptomics"  # Analysis results directory
+  temp_dir: "/mnt/d/HNSC_Omics_Data/temp/spatial_transcriptomics"  # Temporary working directory
+
+# GEO Pipeline Configuration
 geo_pipeline:
   metadata_downloader:
-    output_dir: "resources/metadata/geo_metadata/raw_metadata"  # Correct output directory for raw GEO metadata
-    base_url: "https://ftp.ncbi.nlm.nih.gov/geo/series"  # Base URL for GEO downloads
+    output_dir: "/mnt/d/HNSC_Omics_Data/metadata/geo_metadata/raw_metadata"  # Directory for raw GEO metadata
+    input_file: "/mnt/c/Users/ajboo/BookAbraham/BiologicalDatabases/HNSC_Omics_Database/resources/geo_ids.txt"  # GEO IDs file
     download:
-      timeout: 30  # Timeout for HTTP requests in seconds
-      retries: 3  # Number of retries for failed downloads
+      timeout: 30  # HTTP timeout in seconds
+      retries: 3  # Retry attempts for failed downloads
       retry_delay: 5  # Delay between retries in seconds
-    input_file: "resources/geo_ids.txt"  # Path to the file containing GEO IDs
 
+# General Logging Configuration
+logging:
+  log_dir: "/mnt/c/Users/ajboo/BookAbraham/BiologicalDatabases/HNSC_Omics_Database/logs"  # Directory for log files
+  log_level: "INFO"  # Logging level (DEBUG, INFO, WARNING, ERROR)
 
-
-
-
-# Configuration for CPTAC Workflow
-
-pipeline:
-  cptac:
-    download_dir: "resources/data/raw/CPTAC"  # Directory for downloading CPTAC data
-    processed_dir: "resources/data/processed/CPTAC"  # Directory for processed CPTAC files
-    max_threads: 4  # Maximum threads for parallel processing
-    metadata_file: "resources/data/metadata/cptac_metadata/cptac_summary.json"  # File for metadata storage
-
+# Temporary File Cleanup Settings
 etl:
-  temp_dir: "resources/data/temp/cptac"  # Temporary directory for intermediate files
-  retries:
-    max_attempts: 3  # Number of retry attempts for failed downloads
-    delay: 5  # Delay (in seconds) between retries
-  cleanup: true  # Clean up temp files after successful processing
-
-results:
-  proteomics: "resources/results/Proteomics"  # Directory for storing CPTAC proteomics results
-  phosphoproteomics: "resources/results/Phosphoproteomics"  # Directory for phosphoproteomics results
+  cleanup: true  # Clean up temporary files after successful processing
