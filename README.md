@@ -11,7 +11,7 @@ This repository is dedicated to the development of a **Head and Neck Squamous Ce
 - **Future Expansion**: Prepare for machine learning models and advanced visualizations for systems biology insights.
 
 ## Current Status
-We are currently in the ** Data Integration* with initial sources including datasets from GEO, TCGA, and CPTAC.
+We are currently in the **Data Integration Phase** with initial sources including datasets from GEO, TCGA, and CPTAC.
 
 ## Features
 - Integration of multi-omics data.
